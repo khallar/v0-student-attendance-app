@@ -1,5 +1,9 @@
--- UTN-ASISTENCIA Database Schema
--- Sistema de gestion de asistencia para la UTN
+-- Drop existing tables to recreate with simplified schema
+DROP TABLE IF EXISTS asistencias CASCADE;
+DROP TABLE IF EXISTS clases CASCADE;
+DROP TABLE IF EXISTS materia_alumnos CASCADE;
+DROP TABLE IF EXISTS alumnos CASCADE;
+DROP TABLE IF EXISTS materias CASCADE;
 
 -- Materias
 CREATE TABLE IF NOT EXISTS materias (

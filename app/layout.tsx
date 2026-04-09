@@ -2,13 +2,14 @@ import type { Metadata } from 'next'
 import { Geist, Geist_Mono } from 'next/font/google'
 import { Analytics } from '@vercel/analytics/next'
 import './globals.css'
+import { MainNav } from '@/components/main-nav'
 
 const _geist = Geist({ subsets: ["latin"] });
 const _geistMono = Geist_Mono({ subsets: ["latin"] });
 
 export const metadata: Metadata = {
-  title: 'v0 App',
-  description: 'Created with v0',
+  title: 'UTN Asistencia - Sistema de Gestión',
+  description: 'Sistema de gestión y toma de asistencia para la UTN',
   generator: 'v0.app',
   icons: {
     icon: [
@@ -35,8 +36,9 @@ export default function RootLayout({
   children: React.ReactNode
 }>) {
   return (
-    <html lang="en">
+    <html lang="es">
       <body className="font-sans antialiased">
+        <MainNav />
         {children}
         {process.env.NODE_ENV === 'production' && <Analytics />}
       </body>
