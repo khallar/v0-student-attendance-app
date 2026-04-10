@@ -14,10 +14,11 @@ import {
   getAsistenciasByClase,
   upsertAsistencia,
   createClase,
+  deleteClase,
   getClaseById
 } from '@/lib/supabase/queries'
 import { formatDateShort } from '@/lib/utils-attendance'
-import { ArrowLeft, Download, Plus, Save } from 'lucide-react'
+import { ArrowLeft, Download, Plus, Save, Trash2 } from 'lucide-react'
 import Link from 'next/link'
 
 export default function AsistenciaPage() {
@@ -129,6 +130,29 @@ export default function AsistenciaPage() {
     }
   }
 
+  async function handleDeleteClase(claseId: string) {
+    const clase = clases.find((c: any) => c.id === claseId)
+    if (!clase) return
+    
+    const confirmDelete = confirm(
+      `¿Estás seguro de eliminar la clase del ${formatDateShort(clase.fecha)}?\n\nEsto eliminará también todas las asistencias registradas.`
+    )
+    
+    if (!confirmDelete) return
+    
+    try {
+      await deleteClase(claseId)
+      if (selectedClase === claseId) {
+        setSelectedClase('')
+        setAsistencias({})
+      }
+      await loadClases(selectedMateria)
+    } catch (error) {
+      console.error('Error deleting clase:', error)
+      alert('Error al eliminar la clase')
+    }
+  }
+
   async function handleSaveAsistencias() {
     if (!selectedClase || !selectedMateria) return
     try {
@@ -199,18 +223,31 @@ export default function AsistenciaPage() {
             {/* Seleccionar Clase */}
             <div>
               <label className="block text-sm font-medium mb-2">Clase</label>
-              <Select value={selectedClase} onValueChange={setSelectedClase}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Seleccionar clase..." />
-                </SelectTrigger>
-                <SelectContent>
-                  {clases.map((clase) => (
-                    <SelectItem key={clase.id} value={clase.id}>
-                      {formatDateShort(clase.fecha)}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <div className="flex gap-2">
+                <Select value={selectedClase} onValueChange={setSelectedClase}>
+                  <SelectTrigger className="flex-1">
+                    <SelectValue placeholder="Seleccionar clase..." />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {clases.map((clase) => (
+                      <SelectItem key={clase.id} value={clase.id}>
+                        {formatDateShort(clase.fecha)}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                {selectedClase && (
+                  <Button
+                    variant="outline"
+                    size="icon"
+                    onClick={() => handleDeleteClase(selectedClase)}
+                    className="text-destructive hover:text-destructive hover:bg-destructive/10"
+                    title="Eliminar clase"
+                  >
+                    <Trash2 className="h-4 w-4" />
+                  </Button>
+                )}
+              </div>
             </div>
 
             {/* Botón crear clase */}

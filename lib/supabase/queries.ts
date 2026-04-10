@@ -115,6 +115,13 @@ export async function createClase(materiaId: string, fecha: string) {
   return data[0]
 }
 
+export async function deleteClase(claseId: string) {
+  const supabase = createClient()
+  // Las asistencias se eliminan en cascada por la FK
+  const { error } = await supabase.from('clases').delete().eq('id', claseId)
+  if (error) throw error
+}
+
 // Asistencias
 export async function getAsistenciasByClase(claseId: string) {
   const supabase = createClient()
