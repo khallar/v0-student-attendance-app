@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Alert, AlertDescription } from '@/components/ui/alert'
-import { getClaseByCode, getAlumnoByDni, upsertAsistencia } from '@/lib/supabase/queries'
+import { getClaseByCode, getAlumnoEnrolledByDni, upsertAsistencia } from '@/lib/supabase/queries'
 import { CheckCircle, AlertCircle, Loader } from 'lucide-react'
 
 type Status = 'initial' | 'loading' | 'success' | 'error'
@@ -38,29 +38,30 @@ export default function AutoAsistenciaPage() {
 
   async function handleRegister(e: React.FormEvent) {
     e.preventDefault()
-    if (!dni.trim()) return
+    if (!dni.trim() || !clase) return
 
     try {
       setStatus('loading')
       setMessage('')
 
-      const alumno = await getAlumnoByDni(dni)
+      // Check if alumno exists AND is enrolled in this materia
+      const alumno = await getAlumnoEnrolledByDni(clase.materia_id, dni)
       if (!alumno) {
         setStatus('error')
-        setMessage('DNI no encontrado en el sistema')
+        setMessage('DNI no encontrado o no estás inscripto en esta materia')
         return
       }
 
-      await upsertAsistencia(clase.id, alumno.id, 'PRESENTE')
+      await upsertAsistencia(clase.id, alumno.id, 'presente')
 
       setStatus('success')
-      setMessage(`¡Presente registrado! ${alumno.nombre} ${alumno.apellido}`)
+      setMessage(`Presente registrado para ${alumno.nombre} ${alumno.apellido}`)
       setDni('')
 
       setTimeout(() => {
         setStatus('initial')
         setMessage('')
-      }, 3000)
+      }, 5000)
     } catch (error) {
       setStatus('error')
       setMessage('Error al registrar asistencia. Intenta nuevamente.')
@@ -100,11 +101,23 @@ export default function AutoAsistenciaPage() {
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 flex items-center justify-center p-4">
       <Card className="w-full max-w-md shadow-xl">
-        <CardHeader className="bg-gradient-to-r from-blue-600 to-indigo-600 text-white">
-          <CardTitle className="text-2xl">Autoasistencia</CardTitle>
-          <CardDescription className="text-blue-100">
-            {clase?.materias?.nombre}
-          </CardDescription>
+        <CardHeader className="bg-gradient-to-r from-blue-600 to-indigo-600 text-white rounded-t-lg">
+          <div className="text-center">
+            <p className="text-sm text-blue-200 uppercase tracking-wide mb-1">UTN - Autoasistencia</p>
+            <CardTitle className="text-2xl mb-2">{clase?.materias?.nombre}</CardTitle>
+            <div className="text-blue-100 space-y-1">
+              <p className="text-lg font-medium">
+                {new Date(clase?.fecha).toLocaleDateString('es-AR', { 
+                  weekday: 'long', 
+                  day: 'numeric', 
+                  month: 'long' 
+                })}
+              </p>
+              {clase?.horario && (
+                <p className="text-xl font-bold">{clase.horario}</p>
+              )}
+            </div>
+          </div>
         </CardHeader>
         <CardContent className="pt-6 space-y-4">
           {status === 'success' && (
@@ -140,16 +153,25 @@ export default function AutoAsistenciaPage() {
             </div>
             <Button
               type="submit"
-              className="w-full h-12 text-lg"
+              className="w-full h-14 text-lg bg-green-600 hover:bg-green-700 text-white"
               disabled={!dni || status === 'loading'}
             >
-              {status === 'loading' ? 'Registrando...' : 'Registrar Presente'}
+              {status === 'loading' ? (
+                <span className="flex items-center gap-2">
+                  <Loader className="h-5 w-5 animate-spin" />
+                  Registrando...
+                </span>
+              ) : (
+                <span className="flex items-center gap-2">
+                  <CheckCircle className="h-5 w-5" />
+                  Dar Presente
+                </span>
+              )}
             </Button>
           </form>
 
           <div className="text-center text-xs text-muted-foreground pt-4 border-t">
-            <p>Código de clase: <span className="font-mono font-bold">{clase?.codigo_autoasistencia}</span></p>
-            <p>Fecha: {new Date(clase?.fecha).toLocaleDateString('es-AR')}</p>
+            <p>Codigo de clase: <span className="font-mono font-bold text-foreground">{clase?.codigo_autoasistencia}</span></p>
           </div>
         </CardContent>
       </Card>

@@ -103,13 +103,12 @@ export async function getClaseById(claseId: string) {
   return data
 }
 
-export async function createClase(materiaId: string, fecha: string) {
+export async function createClase(materiaId: string, fecha: string, horario: string) {
   const supabase = createClient()
-  const now = new Date()
   const codigo = Math.random().toString(36).substring(2, 8).toUpperCase()
   const { data, error } = await supabase
     .from('clases')
-    .insert([{ materia_id: materiaId, fecha, codigo_autoasistencia: codigo }])
+    .insert([{ materia_id: materiaId, fecha, horario, codigo_autoasistencia: codigo }])
     .select()
   if (error) throw error
   return data[0]
@@ -204,5 +203,33 @@ export async function isAlumnoInMateria(materiaId: string, alumnoId: string) {
     .single()
   if (error && error.code !== 'PGRST116') throw error
   return !!data
+}
+
+// Check if alumno is enrolled in materia by DNI and return alumno data
+export async function getAlumnoEnrolledByDni(materiaId: string, dni: string) {
+  const supabase = createClient()
+  
+  // First get the alumno by DNI
+  const { data: alumno, error: alumnoError } = await supabase
+    .from('alumnos')
+    .select('*')
+    .eq('dni', dni)
+    .single()
+  
+  if (alumnoError && alumnoError.code !== 'PGRST116') throw alumnoError
+  if (!alumno) return null
+  
+  // Check if enrolled in materia
+  const { data: enrollment, error: enrollError } = await supabase
+    .from('materia_alumnos')
+    .select('id')
+    .eq('materia_id', materiaId)
+    .eq('alumno_id', alumno.id)
+    .single()
+  
+  if (enrollError && enrollError.code !== 'PGRST116') throw enrollError
+  if (!enrollment) return null
+  
+  return alumno
 }
 

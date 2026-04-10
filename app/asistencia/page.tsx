@@ -18,8 +18,11 @@ import {
   getClaseById
 } from '@/lib/supabase/queries'
 import { formatDateShort } from '@/lib/utils-attendance'
-import { ArrowLeft, Download, Plus, Save, Trash2 } from 'lucide-react'
+import { ArrowLeft, Download, Plus, Save, Trash2, QrCode, Copy, Check, Link2 } from 'lucide-react'
 import Link from 'next/link'
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog'
+import { Input } from '@/components/ui/input'
+import QRCode from 'react-qr-code'
 
 export default function AsistenciaPage() {
   const router = useRouter()
@@ -38,6 +41,10 @@ export default function AsistenciaPage() {
   const [loading, setLoading] = useState(false)
   const [saving, setSaving] = useState(false)
   const [creatingClase, setCreatingClase] = useState(false)
+  const [newClaseDialogOpen, setNewClaseDialogOpen] = useState(false)
+  const [newClaseHorario, setNewClaseHorario] = useState('')
+  const [qrDialogOpen, setQrDialogOpen] = useState(false)
+  const [copied, setCopied] = useState(false)
 
   // Load materias on mount
   useEffect(() => {
@@ -116,17 +123,37 @@ export default function AsistenciaPage() {
   }
 
   async function handleCreateClase() {
-    if (!selectedMateria) return
+    if (!selectedMateria || !newClaseHorario) return
     try {
       setCreatingClase(true)
       const now = new Date()
       const fecha = now.toISOString()
-      await createClase(selectedMateria, fecha)
+      const newClase = await createClase(selectedMateria, fecha, newClaseHorario)
       await loadClases(selectedMateria)
+      setSelectedClase(newClase.id)
+      setNewClaseDialogOpen(false)
+      setNewClaseHorario('')
     } catch (error) {
       console.error('Error creating clase:', error)
     } finally {
       setCreatingClase(false)
+    }
+  }
+
+  function getAutoasistenciaUrl() {
+    if (!currentClase?.codigo_autoasistencia) return ''
+    const baseUrl = typeof window !== 'undefined' ? window.location.origin : ''
+    return `${baseUrl}/autoasistencia/${currentClase.codigo_autoasistencia}`
+  }
+
+  async function handleCopyLink() {
+    const url = getAutoasistenciaUrl()
+    try {
+      await navigator.clipboard.writeText(url)
+      setCopied(true)
+      setTimeout(() => setCopied(false), 2000)
+    } catch (error) {
+      console.error('Error copying link:', error)
     }
   }
 
@@ -231,7 +258,7 @@ export default function AsistenciaPage() {
                   <SelectContent>
                     {clases.map((clase) => (
                       <SelectItem key={clase.id} value={clase.id}>
-                        {formatDateShort(clase.fecha)}
+                        {formatDateShort(clase.fecha)} {clase.horario ? `- ${clase.horario}` : ''}
                       </SelectItem>
                     ))}
                   </SelectContent>
@@ -252,14 +279,44 @@ export default function AsistenciaPage() {
 
             {/* Botón crear clase */}
             <div className="flex items-end">
-              <Button 
-                onClick={handleCreateClase} 
-                disabled={!selectedMateria || creatingClase}
-                className="w-full"
-              >
-                <Plus className="mr-2 h-4 w-4" />
-                Nueva clase
-              </Button>
+              <Dialog open={newClaseDialogOpen} onOpenChange={setNewClaseDialogOpen}>
+                <DialogTrigger asChild>
+                  <Button 
+                    disabled={!selectedMateria}
+                    className="w-full"
+                  >
+                    <Plus className="mr-2 h-4 w-4" />
+                    Nueva clase
+                  </Button>
+                </DialogTrigger>
+                <DialogContent>
+                  <DialogHeader>
+                    <DialogTitle>Nueva Clase</DialogTitle>
+                    <DialogDescription>
+                      Crear una nueva clase para {currentMateria?.nombre}
+                    </DialogDescription>
+                  </DialogHeader>
+                  <div className="space-y-4 py-4">
+                    <div>
+                      <label className="text-sm font-medium">Horario de la clase</label>
+                      <Input
+                        type="text"
+                        value={newClaseHorario}
+                        onChange={(e) => setNewClaseHorario(e.target.value)}
+                        placeholder="Ej: 18:00 - 22:00"
+                        className="mt-2"
+                      />
+                    </div>
+                    <Button 
+                      onClick={handleCreateClase} 
+                      disabled={!newClaseHorario || creatingClase}
+                      className="w-full"
+                    >
+                      {creatingClase ? 'Creando...' : 'Crear Clase'}
+                    </Button>
+                  </div>
+                </DialogContent>
+              </Dialog>
             </div>
           </div>
         </Card>
@@ -272,10 +329,57 @@ export default function AsistenciaPage() {
                   <div>
                     <h2 className="text-lg font-semibold">{currentMateria?.nombre}</h2>
                     <p className="text-sm text-muted-foreground">
-                      {alumnos.length} alumnos - {formatDateShort(currentClase?.fecha)}
+                      {alumnos.length} alumnos - {formatDateShort(currentClase?.fecha)} {currentClase?.horario ? `- ${currentClase.horario}` : ''}
                     </p>
                   </div>
                   <div className="flex gap-2 flex-wrap">
+                    <Dialog open={qrDialogOpen} onOpenChange={setQrDialogOpen}>
+                      <DialogTrigger asChild>
+                        <Button size="sm" variant="default">
+                          <QrCode className="mr-2 h-4 w-4" />
+                          Autoasistencia QR
+                        </Button>
+                      </DialogTrigger>
+                      <DialogContent className="sm:max-w-md">
+                        <DialogHeader>
+                          <DialogTitle>Autoasistencia para Alumnos</DialogTitle>
+                          <DialogDescription>
+                            Los alumnos pueden escanear el QR o usar el link para marcar su presente
+                          </DialogDescription>
+                        </DialogHeader>
+                        <div className="flex flex-col items-center gap-6 py-6">
+                          <div className="bg-white p-4 rounded-lg">
+                            <QRCode 
+                              value={getAutoasistenciaUrl()} 
+                              size={200}
+                              level="H"
+                            />
+                          </div>
+                          <div className="w-full space-y-2">
+                            <label className="text-sm font-medium">Link de autoasistencia:</label>
+                            <div className="flex gap-2">
+                              <Input 
+                                value={getAutoasistenciaUrl()} 
+                                readOnly 
+                                className="text-xs"
+                              />
+                              <Button 
+                                size="icon" 
+                                variant="outline"
+                                onClick={handleCopyLink}
+                              >
+                                {copied ? <Check className="h-4 w-4 text-green-600" /> : <Copy className="h-4 w-4" />}
+                              </Button>
+                            </div>
+                          </div>
+                          <div className="text-center text-sm text-muted-foreground">
+                            <p><strong>Materia:</strong> {currentMateria?.nombre}</p>
+                            <p><strong>Clase:</strong> {formatDateShort(currentClase?.fecha)} {currentClase?.horario ? `- ${currentClase.horario}` : ''}</p>
+                            <p className="mt-2 text-xs">Codigo: <span className="font-mono font-bold">{currentClase?.codigo_autoasistencia}</span></p>
+                          </div>
+                        </div>
+                      </DialogContent>
+                    </Dialog>
                     <Button 
                       size="sm" 
                       variant="outline"
