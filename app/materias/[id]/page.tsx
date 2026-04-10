@@ -9,7 +9,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
-import { getAlumnosByMateria, createAlumno, addAlumnoToMateria, removeAlumnoFromMateria, getMaterias } from '@/lib/supabase/queries'
+import { getAlumnosByMateria, createAlumno, addAlumnoToMateria, removeAlumnoFromMateria, getMaterias, findOrCreateAlumno, isAlumnoInMateria } from '@/lib/supabase/queries'
 import { Upload, Plus, Trash2, AlertCircle } from 'lucide-react'
 
 export default function MateriaDetailPage() {
@@ -114,16 +114,34 @@ export default function MateriaDetailPage() {
 
   async function handleImportCSV() {
     try {
+      let imported = 0
+      let skipped = 0
+      
       for (const row of csvData) {
-        const alumno = await createAlumno(row.nombre, row.apellido, row.dni, row.email)
-        await addAlumnoToMateria(materiaId, alumno.id)
+        // Find existing alumno or create new one
+        const alumno = await findOrCreateAlumno(row.nombre, row.apellido, row.dni, row.email)
+        
+        // Check if already enrolled in this materia
+        const alreadyEnrolled = await isAlumnoInMateria(materiaId, alumno.id)
+        if (!alreadyEnrolled) {
+          await addAlumnoToMateria(materiaId, alumno.id)
+          imported++
+        } else {
+          skipped++
+        }
       }
+      
       setCsvData([])
       setCsvErrors([])
       setCsvPreview(false)
       await loadData()
+      
+      if (skipped > 0) {
+        alert(`Importacion completada: ${imported} alumnos agregados, ${skipped} ya estaban inscriptos.`)
+      }
     } catch (error) {
       console.error('Error importing CSV:', error)
+      alert('Error al importar: ' + (error as Error).message)
     }
   }
 

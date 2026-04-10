@@ -60,7 +60,7 @@ export function MainNav() {
           <div className="hidden md:flex items-center gap-1">
             {NAV_ITEMS.map((item) => (
               <Link
-                key={item.href}
+                key={`desktop-${item.href}`}
                 href={item.href}
                 className="px-3 py-2 text-sm font-medium rounded-lg hover:bg-accent transition-colors"
               >
@@ -97,7 +97,7 @@ export function MainNav() {
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end" className="w-48">
                 {NAV_ITEMS.map((item) => (
-                  <DropdownMenuItem key={item.href} asChild>
+                  <DropdownMenuItem key={`mobile-${item.href}`} asChild>
                     <Link href={item.href} className="w-full">
                       {item.icon} {item.label}
                     </Link>

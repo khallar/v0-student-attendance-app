@@ -158,7 +158,44 @@ export async function getAlumnoByDni(dni: string) {
     .select('*')
     .eq('dni', dni)
     .single()
-  if (error) throw error
+  if (error && error.code !== 'PGRST116') throw error // PGRST116 = no rows found
   return data
+}
+
+// Find or create alumno by DNI - used for CSV import
+export async function findOrCreateAlumno(nombre: string, apellido: string, dni: string, email: string) {
+  const supabase = createClient()
+  
+  // First try to find existing alumno by DNI
+  const { data: existing } = await supabase
+    .from('alumnos')
+    .select('*')
+    .eq('dni', dni)
+    .single()
+  
+  if (existing) {
+    return existing
+  }
+  
+  // Create new alumno
+  const { data, error } = await supabase
+    .from('alumnos')
+    .insert([{ nombre, apellido, dni, email }])
+    .select()
+  if (error) throw error
+  return data[0]
+}
+
+// Check if alumno is already in materia
+export async function isAlumnoInMateria(materiaId: string, alumnoId: string) {
+  const supabase = createClient()
+  const { data, error } = await supabase
+    .from('materia_alumnos')
+    .select('id')
+    .eq('materia_id', materiaId)
+    .eq('alumno_id', alumnoId)
+    .single()
+  if (error && error.code !== 'PGRST116') throw error
+  return !!data
 }
 
