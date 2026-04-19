@@ -8,206 +8,190 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Badge } from '@/components/ui/badge'
 import { Progress } from '@/components/ui/progress'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
-import { 
-  getMaterias, 
-  getClasesByMateria, 
-  getAlumnosByMateria, 
+import {
+  getMaterias,
+  getClasesByMateria,
+  getAlumnosByMateria,
   getAsistenciasByClase,
   getAllAlumnosWithMaterias,
-  getAsistenciasByAlumno
+  getInformeByAlumno,
 } from '@/lib/supabase/queries'
-import { AlertCircle, Users, BookOpen, Calendar } from 'lucide-react'
-
-interface AsistenciaStats {
-  presente: number
-  ausente: number
-  justificado: number
-  tardanza: number
-  total: number
-  porcentajeAsistencia: number
-}
+import { AlertCircle, Users, BookOpen, Calendar, TrendingUp, CheckCircle } from 'lucide-react'
 
 function formatDateShort(fecha: string) {
   if (!fecha) return ''
   return new Date(fecha).toLocaleDateString('es-AR', {
     day: '2-digit',
     month: '2-digit',
-    year: '2-digit'
+    year: '2-digit',
   })
 }
 
 function getEstadoBadge(estado: string) {
-  const estadoLower = estado?.toLowerCase() || ''
-  switch (estadoLower) {
+  switch (estado?.toLowerCase()) {
     case 'presente':
-      return <Badge className="bg-green-100 text-green-800 hover:bg-green-100">P</Badge>
+      return <Badge className="bg-green-100 text-green-800 hover:bg-green-100 text-xs px-1.5">P</Badge>
     case 'ausente':
-      return <Badge className="bg-red-100 text-red-800 hover:bg-red-100">A</Badge>
+      return <Badge className="bg-red-100 text-red-800 hover:bg-red-100 text-xs px-1.5">A</Badge>
     case 'justificado':
-      return <Badge className="bg-yellow-100 text-yellow-800 hover:bg-yellow-100">J</Badge>
+      return <Badge className="bg-yellow-100 text-yellow-800 hover:bg-yellow-100 text-xs px-1.5">J</Badge>
     case 'tardanza':
-      return <Badge className="bg-orange-100 text-orange-800 hover:bg-orange-100">T</Badge>
+      return <Badge className="bg-orange-100 text-orange-800 hover:bg-orange-100 text-xs px-1.5">T</Badge>
     default:
-      return <Badge variant="outline">-</Badge>
+      return <Badge variant="outline" className="text-xs px-1.5">-</Badge>
   }
 }
 
+function getPorcentajeColor(p: number) {
+  if (p >= 75) return 'text-green-600'
+  if (p >= 50) return 'text-yellow-600'
+  return 'text-red-600'
+}
+
+function getRiskBadge(p: number) {
+  if (p >= 75) return <Badge className="bg-green-100 text-green-800">Regular</Badge>
+  if (p >= 50) return <Badge className="bg-yellow-100 text-yellow-800">Alerta</Badge>
+  return <Badge className="bg-red-100 text-red-800">Riesgo</Badge>
+}
+
 export default function InformesPage() {
+  // --- Tab Por Materia ---
   const [materias, setMaterias] = useState<any[]>([])
   const [selectedMateria, setSelectedMateria] = useState<string>('')
   const [clases, setClases] = useState<any[]>([])
   const [alumnos, setAlumnos] = useState<any[]>([])
   const [asistenciasMap, setAsistenciasMap] = useState<Map<string, Map<string, string>>>(new Map())
-  const [loading, setLoading] = useState(true)
-  
-  // For "Por Alumno" tab
+  const [loadingMateria, setLoadingMateria] = useState(false)
+
+  // --- Tab Por Alumno ---
   const [allAlumnos, setAllAlumnos] = useState<any[]>([])
-  const [alumnosAsistencias, setAlumnosAsistencias] = useState<Map<string, any[]>>(new Map())
-  const [loadingAlumnos, setLoadingAlumnos] = useState(false)
+  const [selectedAlumno, setSelectedAlumno] = useState<string>('')
+  const [alumnoData, setAlumnoData] = useState<any | null>(null) // alumno object
+  const [alumnoMaterias, setAlumnoMaterias] = useState<any[]>([]) // array of materias con stats
+  const [loadingAlumno, setLoadingAlumno] = useState(false)
+  const [loadingAlumnosList, setLoadingAlumnosList] = useState(false)
 
   useEffect(() => {
-    loadMaterias()
+    loadInit()
   }, [])
 
-  useEffect(() => {
-    if (selectedMateria) {
-      loadMateriaData()
-    }
-  }, [selectedMateria])
-
-  async function loadMaterias() {
+  async function loadInit() {
     try {
-      setLoading(true)
       const data = await getMaterias()
       setMaterias(data)
     } catch (error) {
       console.error('Error loading materias:', error)
-    } finally {
-      setLoading(false)
     }
   }
 
+  // Load alumnos list when Por Alumno tab is first opened
+  async function loadAlumnosList() {
+    if (allAlumnos.length > 0) return
+    try {
+      setLoadingAlumnosList(true)
+      const data = await getAllAlumnosWithMaterias()
+      setAllAlumnos(data)
+    } catch (error) {
+      console.error('Error loading alumnos:', error)
+    } finally {
+      setLoadingAlumnosList(false)
+    }
+  }
+
+  // Load materia data when selectedMateria changes
+  useEffect(() => {
+    if (!selectedMateria) return
+    loadMateriaData()
+  }, [selectedMateria])
+
   async function loadMateriaData() {
     try {
-      setLoading(true)
+      setLoadingMateria(true)
+      const today = new Date().toISOString()
       const [clasesData, alumnosData] = await Promise.all([
         getClasesByMateria(selectedMateria),
-        getAlumnosByMateria(selectedMateria)
+        getAlumnosByMateria(selectedMateria),
       ])
 
-      // Load asistencias for each clase
+      // Only clases up to today
+      const clasesHoy = clasesData.filter((c: any) => new Date(c.fecha) <= new Date())
+
       const map = new Map<string, Map<string, string>>()
       await Promise.all(
-        clasesData.map(async (clase: any) => {
+        clasesHoy.map(async (clase: any) => {
           const asistenciasData = await getAsistenciasByClase(clase.id)
           const claseMap = new Map<string, string>()
           asistenciasData.forEach((a: any) => {
-            claseMap.set(a.alumno_id, a.estado)
+            claseMap.set(a.alumno_id, a.estado?.toLowerCase())
           })
           map.set(clase.id, claseMap)
         })
       )
 
-      setClases(clasesData)
+      setClases(clasesHoy)
       setAlumnos(alumnosData)
       setAsistenciasMap(map)
     } catch (error) {
       console.error('Error loading materia data:', error)
     } finally {
-      setLoading(false)
+      setLoadingMateria(false)
     }
   }
 
-  async function loadAlumnosData() {
+  // Load alumno informe when selectedAlumno changes
+  useEffect(() => {
+    if (!selectedAlumno) return
+    loadAlumnoData()
+  }, [selectedAlumno])
+
+  async function loadAlumnoData() {
     try {
-      setLoadingAlumnos(true)
-      const alumnosWithMaterias = await getAllAlumnosWithMaterias()
-      setAllAlumnos(alumnosWithMaterias)
-
-      // Load asistencias for each alumno
-      const asistMap = new Map<string, any[]>()
-      await Promise.all(
-        alumnosWithMaterias.map(async (alumno: any) => {
-          const asistencias = await getAsistenciasByAlumno(alumno.id)
-          asistMap.set(alumno.id, asistencias)
-        })
-      )
-      setAlumnosAsistencias(asistMap)
+      setLoadingAlumno(true)
+      setAlumnoMaterias([])
+      const found = allAlumnos.find((a) => a.id === selectedAlumno)
+      setAlumnoData(found || null)
+      const stats = await getInformeByAlumno(selectedAlumno)
+      setAlumnoMaterias(stats)
     } catch (error) {
-      console.error('Error loading alumnos data:', error)
+      console.error('Error loading alumno data:', error)
     } finally {
-      setLoadingAlumnos(false)
+      setLoadingAlumno(false)
     }
   }
 
-  function getAsistenciaStats(alumnoId: string): AsistenciaStats {
-    let presente = 0
-    let ausente = 0
-    let justificado = 0
-    let tardanza = 0
-
+  // --- Helpers for Por Materia ---
+  function getAsistenciaStats(alumnoId: string) {
+    let presente = 0, ausente = 0, justificado = 0, tardanza = 0
     asistenciasMap.forEach((claseMap) => {
       const estado = claseMap.get(alumnoId)?.toLowerCase()
-      if (!estado) return
+      if (!estado) { ausente++; return }
       if (estado === 'presente') presente++
       else if (estado === 'ausente') ausente++
       else if (estado === 'justificado') justificado++
       else if (estado === 'tardanza') tardanza++
     })
-
     const total = clases.length
     const porcentajeAsistencia = total === 0 ? 0 : Math.round(((presente + justificado) / total) * 100)
-
     return { presente, ausente, justificado, tardanza, total, porcentajeAsistencia }
   }
 
-  function getAlumnoMateriaStats(alumnoId: string, materiaId: string) {
-    const asistencias = alumnosAsistencias.get(alumnoId) || []
-    const materiaAsistencias = asistencias.filter((a: any) => a.clases?.materia_id === materiaId)
-    
-    let presente = 0
-    let ausente = 0
-    let justificado = 0
-    let tardanza = 0
+  // --- Computed for Por Alumno ---
+  const totalClasesAlumno = alumnoMaterias.reduce((s, m) => s + m.total, 0)
+  const totalPresentesAlumno = alumnoMaterias.reduce((s, m) => s + m.presente + m.justificado, 0)
+  const porcentajeTotalAlumno = totalClasesAlumno === 0 ? 0 : Math.round((totalPresentesAlumno / totalClasesAlumno) * 100)
 
-    materiaAsistencias.forEach((a: any) => {
-      const estado = a.estado?.toLowerCase()
-      if (estado === 'presente') presente++
-      else if (estado === 'ausente') ausente++
-      else if (estado === 'justificado') justificado++
-      else if (estado === 'tardanza') tardanza++
-    })
-
-    const total = materiaAsistencias.length
-    const porcentaje = total === 0 ? 0 : Math.round(((presente + justificado) / total) * 100)
-
-    return { presente, ausente, justificado, tardanza, total, porcentaje }
-  }
-
-  function getRiskBadge(porcentaje: number) {
-    if (porcentaje >= 75) {
-      return <Badge className="bg-green-100 text-green-800">OK</Badge>
-    }
-    if (porcentaje >= 50) {
-      return <Badge className="bg-yellow-100 text-yellow-800">Alerta</Badge>
-    }
-    return <Badge className="bg-red-100 text-red-800">Riesgo</Badge>
-  }
-
-  const currentMateria = materias.find(m => m.id === selectedMateria)
+  const currentMateria = materias.find((m) => m.id === selectedMateria)
 
   return (
     <AuthGuard>
       <div className="mx-auto max-w-7xl p-4 sm:p-6 lg:p-8">
         <div className="mb-8">
           <h1 className="text-3xl font-bold">Informes de Asistencia</h1>
-          <p className="text-muted-foreground">Reportes y estadisticas detalladas</p>
+          <p className="text-muted-foreground">Reportes y estadisticas detalladas — clases hasta la fecha actual</p>
         </div>
 
         <Tabs defaultValue="por-materia" onValueChange={(v) => {
-          if (v === 'por-alumno' && allAlumnos.length === 0) {
-            loadAlumnosData()
-          }
+          if (v === 'por-alumno') loadAlumnosList()
         }}>
           <TabsList className="mb-6">
             <TabsTrigger value="por-materia" className="gap-2">
@@ -220,22 +204,18 @@ export default function InformesPage() {
             </TabsTrigger>
           </TabsList>
 
-          {/* TAB: Por Materia */}
+          {/* ======================== TAB: Por Materia ======================== */}
           <TabsContent value="por-materia">
-            {/* Selector de materia */}
             <Card className="mb-6">
-              <CardHeader>
-                <CardTitle className="text-lg">Selecciona una materia</CardTitle>
-              </CardHeader>
-              <CardContent>
+              <CardContent className="pt-6">
                 <Select value={selectedMateria} onValueChange={setSelectedMateria}>
                   <SelectTrigger className="max-w-sm">
-                    <SelectValue placeholder="Selecciona una materia" />
+                    <SelectValue placeholder="Selecciona una materia..." />
                   </SelectTrigger>
                   <SelectContent>
                     {materias.map((m) => (
                       <SelectItem key={m.id} value={m.id}>
-                        {m.nombre} ({m.codigo})
+                        {m.nombre} — {m.codigo}
                       </SelectItem>
                     ))}
                   </SelectContent>
@@ -243,102 +223,96 @@ export default function InformesPage() {
               </CardContent>
             </Card>
 
-            {selectedMateria && !loading && (
+            {loadingMateria && (
+              <div className="flex justify-center py-12 text-muted-foreground">Cargando datos...</div>
+            )}
+
+            {selectedMateria && !loadingMateria && (
               <>
-                {/* Resumen general */}
-                <div className="grid gap-4 md:grid-cols-4 mb-6">
+                {/* Summary cards */}
+                <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4 mb-6">
                   <Card>
                     <CardContent className="pt-6 text-center">
                       <Calendar className="h-8 w-8 mx-auto mb-2 text-blue-600" />
                       <p className="text-3xl font-bold text-blue-600">{clases.length}</p>
-                      <p className="text-sm text-muted-foreground">Clases</p>
+                      <p className="text-sm text-muted-foreground">Clases dictadas</p>
                     </CardContent>
                   </Card>
                   <Card>
                     <CardContent className="pt-6 text-center">
-                      <Users className="h-8 w-8 mx-auto mb-2 text-green-600" />
-                      <p className="text-3xl font-bold text-green-600">{alumnos.length}</p>
+                      <Users className="h-8 w-8 mx-auto mb-2 text-foreground" />
+                      <p className="text-3xl font-bold">{alumnos.length}</p>
                       <p className="text-sm text-muted-foreground">Alumnos</p>
                     </CardContent>
                   </Card>
                   <Card>
                     <CardContent className="pt-6 text-center">
-                      <p className="text-3xl font-bold text-foreground">
+                      <TrendingUp className="h-8 w-8 mx-auto mb-2 text-green-600" />
+                      <p className="text-3xl font-bold text-green-600">
                         {alumnos.length > 0
-                          ? Math.round(
-                              alumnos.reduce((sum, a) => sum + getAsistenciaStats(a.id).porcentajeAsistencia, 0) /
-                                alumnos.length
-                            )
-                          : 0}
-                        %
+                          ? Math.round(alumnos.reduce((s, a) => s + getAsistenciaStats(a.id).porcentajeAsistencia, 0) / alumnos.length)
+                          : 0}%
                       </p>
-                      <p className="text-sm text-muted-foreground">Asistencia Promedio</p>
+                      <p className="text-sm text-muted-foreground">Asistencia promedio</p>
                     </CardContent>
                   </Card>
                   <Card>
                     <CardContent className="pt-6 text-center">
                       <AlertCircle className="h-8 w-8 mx-auto mb-2 text-red-600" />
                       <p className="text-3xl font-bold text-red-600">
-                        {alumnos.filter(a => getAsistenciaStats(a.id).porcentajeAsistencia < 75).length}
+                        {alumnos.filter((a) => getAsistenciaStats(a.id).porcentajeAsistencia < 75).length}
                       </p>
-                      <p className="text-sm text-muted-foreground">{'En Riesgo (<75%)'}</p>
+                      <p className="text-sm text-muted-foreground">{'En riesgo (<75%)'}</p>
                     </CardContent>
                   </Card>
                 </div>
 
-                {/* Detalle por Clase */}
+                {/* Asistencia por Clase — grilla alumno x clase */}
                 <Card className="mb-6">
                   <CardHeader>
                     <CardTitle>Asistencia por Clase</CardTitle>
-                    <CardDescription>
-                      Detalle de asistencia en cada clase de {currentMateria?.nombre}
-                    </CardDescription>
+                    <CardDescription>{currentMateria?.nombre} — clases dictadas hasta hoy</CardDescription>
                   </CardHeader>
                   <CardContent>
                     {clases.length === 0 ? (
-                      <p className="text-muted-foreground text-center py-4">No hay clases registradas</p>
+                      <p className="text-muted-foreground text-center py-4">No hay clases dictadas aun</p>
                     ) : (
                       <div className="overflow-x-auto">
                         <Table>
                           <TableHeader>
                             <TableRow>
-                              <TableHead className="sticky left-0 bg-background">Alumno</TableHead>
-                              {clases.slice().reverse().map((clase) => (
-                                <TableHead key={clase.id} className="text-center min-w-16">
-                                  <div className="text-xs">
-                                    {formatDateShort(clase.fecha)}
-                                  </div>
+                              <TableHead className="sticky left-0 bg-background min-w-40">Alumno</TableHead>
+                              {clases.map((clase) => (
+                                <TableHead key={clase.id} className="text-center min-w-16 px-1">
+                                  <div className="text-xs font-medium">{formatDateShort(clase.fecha)}</div>
                                   {clase.horario && (
-                                    <div className="text-xs text-muted-foreground">{clase.horario}</div>
+                                    <div className="text-xs text-muted-foreground font-normal">{clase.horario.split(' - ')[0]}</div>
                                   )}
                                 </TableHead>
                               ))}
-                              <TableHead className="text-center">Total</TableHead>
+                              <TableHead className="text-center min-w-20">%</TableHead>
                             </TableRow>
                           </TableHeader>
                           <TableBody>
                             {alumnos.map((alumno) => {
                               const stats = getAsistenciaStats(alumno.id)
                               return (
-                                <TableRow key={alumno.id} className={stats.porcentajeAsistencia < 75 ? 'bg-red-50' : ''}>
-                                  <TableCell className="sticky left-0 bg-background font-medium whitespace-nowrap">
+                                <TableRow key={alumno.id} className={stats.porcentajeAsistencia < 75 ? 'bg-red-50/60' : ''}>
+                                  <TableCell className="sticky left-0 bg-background font-medium whitespace-nowrap text-sm">
                                     {alumno.apellido}, {alumno.nombre}
                                   </TableCell>
-                                  {clases.slice().reverse().map((clase) => {
-                                    const estado = asistenciasMap.get(clase.id)?.get(alumno.id)
+                                  {clases.map((clase) => {
+                                    const estado = asistenciasMap.get(clase.id)?.get(alumno.id) || ''
                                     return (
-                                      <TableCell key={clase.id} className="text-center">
-                                        {getEstadoBadge(estado || '')}
+                                      <TableCell key={clase.id} className="text-center px-1">
+                                        {getEstadoBadge(estado)}
                                       </TableCell>
                                     )
                                   })}
                                   <TableCell className="text-center">
-                                    <div className="flex items-center justify-center gap-1">
-                                      <span className="font-semibold">{stats.porcentajeAsistencia}%</span>
-                                      {stats.porcentajeAsistencia < 75 && (
-                                        <AlertCircle className="h-4 w-4 text-red-600" />
-                                      )}
-                                    </div>
+                                    <span className={`font-bold text-sm ${getPorcentajeColor(stats.porcentajeAsistencia)}`}>
+                                      {stats.porcentajeAsistencia}%
+                                    </span>
                                   </TableCell>
                                 </TableRow>
                               )
@@ -350,11 +324,11 @@ export default function InformesPage() {
                   </CardContent>
                 </Card>
 
-                {/* Tabla resumen por alumno */}
+                {/* Resumen por Alumno */}
                 <Card>
                   <CardHeader>
                     <CardTitle>Resumen por Alumno</CardTitle>
-                    <CardDescription>Estadisticas totales de cada alumno</CardDescription>
+                    <CardDescription>Totales de asistencia en {currentMateria?.nombre}</CardDescription>
                   </CardHeader>
                   <CardContent>
                     <div className="overflow-x-auto">
@@ -363,11 +337,11 @@ export default function InformesPage() {
                           <TableRow>
                             <TableHead>Alumno</TableHead>
                             <TableHead>DNI</TableHead>
-                            <TableHead className="text-center">P</TableHead>
-                            <TableHead className="text-center">J</TableHead>
-                            <TableHead className="text-center">T</TableHead>
-                            <TableHead className="text-center">A</TableHead>
-                            <TableHead className="text-right w-48">% Asistencia</TableHead>
+                            <TableHead className="text-center">Pres.</TableHead>
+                            <TableHead className="text-center">Just.</TableHead>
+                            <TableHead className="text-center">Tard.</TableHead>
+                            <TableHead className="text-center">Aus.</TableHead>
+                            <TableHead className="text-right w-52">% Asistencia</TableHead>
                             <TableHead className="text-center">Estado</TableHead>
                           </TableRow>
                         </TableHeader>
@@ -375,24 +349,22 @@ export default function InformesPage() {
                           {alumnos.map((alumno) => {
                             const stats = getAsistenciaStats(alumno.id)
                             return (
-                              <TableRow key={alumno.id} className={stats.porcentajeAsistencia < 75 ? 'bg-red-50' : ''}>
-                                <TableCell className="font-medium">
-                                  {alumno.apellido}, {alumno.nombre}
-                                </TableCell>
-                                <TableCell className="text-muted-foreground">{alumno.dni}</TableCell>
-                                <TableCell className="text-center text-green-600 font-semibold">{stats.presente}</TableCell>
-                                <TableCell className="text-center text-yellow-600 font-semibold">{stats.justificado}</TableCell>
-                                <TableCell className="text-center text-orange-600 font-semibold">{stats.tardanza}</TableCell>
-                                <TableCell className="text-center text-red-600 font-semibold">{stats.ausente}</TableCell>
+                              <TableRow key={alumno.id} className={stats.porcentajeAsistencia < 75 ? 'bg-red-50/60' : ''}>
+                                <TableCell className="font-medium">{alumno.apellido}, {alumno.nombre}</TableCell>
+                                <TableCell className="text-muted-foreground font-mono text-sm">{alumno.dni}</TableCell>
+                                <TableCell className="text-center text-green-700 font-semibold">{stats.presente}</TableCell>
+                                <TableCell className="text-center text-yellow-700 font-semibold">{stats.justificado}</TableCell>
+                                <TableCell className="text-center text-orange-700 font-semibold">{stats.tardanza}</TableCell>
+                                <TableCell className="text-center text-red-700 font-semibold">{stats.ausente}</TableCell>
                                 <TableCell>
-                                  <div className="flex items-center gap-2">
-                                    <Progress value={stats.porcentajeAsistencia} className="w-24" />
-                                    <span className="font-semibold">{stats.porcentajeAsistencia}%</span>
+                                  <div className="flex items-center justify-end gap-2">
+                                    <Progress value={stats.porcentajeAsistencia} className="w-24 h-2" />
+                                    <span className={`font-semibold w-10 text-right ${getPorcentajeColor(stats.porcentajeAsistencia)}`}>
+                                      {stats.porcentajeAsistencia}%
+                                    </span>
                                   </div>
                                 </TableCell>
-                                <TableCell className="text-center">
-                                  {getRiskBadge(stats.porcentajeAsistencia)}
-                                </TableCell>
+                                <TableCell className="text-center">{getRiskBadge(stats.porcentajeAsistencia)}</TableCell>
                               </TableRow>
                             )
                           })}
@@ -404,88 +376,160 @@ export default function InformesPage() {
               </>
             )}
 
-            {loading && selectedMateria && (
-              <div className="flex justify-center py-8">
-                <div className="text-muted-foreground">Cargando datos...</div>
+            {!selectedMateria && !loadingMateria && (
+              <div className="flex flex-col items-center justify-center py-16 text-muted-foreground gap-2">
+                <BookOpen className="h-10 w-10 opacity-30" />
+                <p>Selecciona una materia para ver el informe</p>
               </div>
             )}
           </TabsContent>
 
-          {/* TAB: Por Alumno */}
+          {/* ======================== TAB: Por Alumno ======================== */}
           <TabsContent value="por-alumno">
-            {loadingAlumnos ? (
-              <div className="flex justify-center py-8">
-                <div className="text-muted-foreground">Cargando datos de alumnos...</div>
+            {/* Selector de alumno */}
+            <Card className="mb-6">
+              <CardContent className="pt-6">
+                {loadingAlumnosList ? (
+                  <p className="text-sm text-muted-foreground">Cargando alumnos...</p>
+                ) : (
+                  <Select value={selectedAlumno} onValueChange={setSelectedAlumno}>
+                    <SelectTrigger className="max-w-sm">
+                      <SelectValue placeholder="Selecciona un alumno..." />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {allAlumnos.map((a) => (
+                        <SelectItem key={a.id} value={a.id}>
+                          {a.apellido}, {a.nombre} — DNI {a.dni}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                )}
+              </CardContent>
+            </Card>
+
+            {loadingAlumno && (
+              <div className="flex justify-center py-12 text-muted-foreground">Cargando informe...</div>
+            )}
+
+            {selectedAlumno && !loadingAlumno && alumnoData && (
+              <>
+                {/* Cabecera del alumno + % total destacado */}
+                <div className="grid gap-4 sm:grid-cols-3 mb-6">
+                  {/* % Total — card grande */}
+                  <Card className="sm:col-span-1 border-2 flex flex-col items-center justify-center py-8"
+                    style={{ borderColor: porcentajeTotalAlumno >= 75 ? '#16a34a' : porcentajeTotalAlumno >= 50 ? '#ca8a04' : '#dc2626' }}>
+                    <p className="text-xs uppercase tracking-widest text-muted-foreground mb-1">Asistencia total</p>
+                    <p className={`text-7xl font-extrabold leading-none ${getPorcentajeColor(porcentajeTotalAlumno)}`}>
+                      {porcentajeTotalAlumno}%
+                    </p>
+                    <p className="text-sm text-muted-foreground mt-2">
+                      {totalPresentesAlumno} de {totalClasesAlumno} clases
+                    </p>
+                    <div className="mt-3">{getRiskBadge(porcentajeTotalAlumno)}</div>
+                  </Card>
+
+                  {/* Info del alumno */}
+                  <Card className="sm:col-span-2">
+                    <CardHeader>
+                      <CardTitle className="text-xl">{alumnoData.apellido}, {alumnoData.nombre}</CardTitle>
+                      <CardDescription>DNI {alumnoData.dni}{alumnoData.email ? ` — ${alumnoData.email}` : ''}</CardDescription>
+                    </CardHeader>
+                    <CardContent>
+                      <div className="grid grid-cols-3 gap-4 text-center">
+                        <div>
+                          <p className="text-2xl font-bold text-green-600">
+                            {alumnoMaterias.reduce((s, m) => s + m.presente, 0)}
+                          </p>
+                          <p className="text-xs text-muted-foreground">Presentes</p>
+                        </div>
+                        <div>
+                          <p className="text-2xl font-bold text-yellow-600">
+                            {alumnoMaterias.reduce((s, m) => s + m.justificado, 0)}
+                          </p>
+                          <p className="text-xs text-muted-foreground">Justificadas</p>
+                        </div>
+                        <div>
+                          <p className="text-2xl font-bold text-red-600">
+                            {alumnoMaterias.reduce((s, m) => s + m.ausente, 0)}
+                          </p>
+                          <p className="text-xs text-muted-foreground">Ausentes</p>
+                        </div>
+                      </div>
+                    </CardContent>
+                  </Card>
+                </div>
+
+                {/* % por materia */}
+                <Card className="mb-6">
+                  <CardHeader>
+                    <CardTitle>Asistencia por Materia</CardTitle>
+                    <CardDescription>Porcentaje calculado sobre clases dictadas hasta hoy</CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    {alumnoMaterias.length === 0 ? (
+                      <p className="text-muted-foreground text-center py-4">Sin materias inscriptas</p>
+                    ) : (
+                      <div className="space-y-4">
+                        {alumnoMaterias.map((materia) => (
+                          <div key={materia.id} className="flex flex-col gap-1">
+                            <div className="flex items-center justify-between">
+                              <div>
+                                <span className="font-medium text-sm">{materia.nombre}</span>
+                                <span className="ml-2 text-xs text-muted-foreground">{materia.codigo}</span>
+                              </div>
+                              <div className="flex items-center gap-3">
+                                <span className="text-xs text-muted-foreground">
+                                  {materia.presente + materia.justificado}/{materia.total} clases
+                                </span>
+                                <span className={`font-bold text-base w-12 text-right ${getPorcentajeColor(materia.porcentaje)}`}>
+                                  {materia.porcentaje}%
+                                </span>
+                                {getRiskBadge(materia.porcentaje)}
+                              </div>
+                            </div>
+                            <Progress value={materia.porcentaje} className="h-2" />
+                            <div className="flex gap-4 text-xs text-muted-foreground">
+                              <span className="text-green-600">P: {materia.presente}</span>
+                              <span className="text-yellow-600">J: {materia.justificado}</span>
+                              <span className="text-orange-600">T: {materia.tardanza}</span>
+                              <span className="text-red-600">A: {materia.ausente}</span>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </CardContent>
+                </Card>
+
+                {/* Detalle por clase dentro de cada materia */}
+                {alumnoMaterias.map((materia) => (
+                  materia.clases && materia.clases.length > 0 && (
+                    <Card key={materia.id} className="mb-4">
+                      <CardHeader className="pb-2">
+                        <CardTitle className="text-base">{materia.nombre} — Detalle de clases</CardTitle>
+                      </CardHeader>
+                      <CardContent>
+                        <div className="flex flex-wrap gap-2">
+                          {materia.clases.map((clase: any) => (
+                            <div key={clase.id} className="flex flex-col items-center gap-0.5">
+                              <span className="text-xs text-muted-foreground">{formatDateShort(clase.fecha)}</span>
+                              {getEstadoBadge(clase.estado)}
+                            </div>
+                          ))}
+                        </div>
+                      </CardContent>
+                    </Card>
+                  )
+                ))}
+              </>
+            )}
+
+            {!selectedAlumno && !loadingAlumnosList && (
+              <div className="flex flex-col items-center justify-center py-16 text-muted-foreground gap-2">
+                <Users className="h-10 w-10 opacity-30" />
+                <p>Selecciona un alumno para ver su informe de asistencia</p>
               </div>
-            ) : (
-              <Card>
-                <CardHeader>
-                  <CardTitle>Asistencia por Alumno</CardTitle>
-                  <CardDescription>
-                    Porcentaje de asistencia de cada alumno en todas sus materias
-                  </CardDescription>
-                </CardHeader>
-                <CardContent>
-                  {allAlumnos.length === 0 ? (
-                    <p className="text-muted-foreground text-center py-4">No hay alumnos registrados</p>
-                  ) : (
-                    <div className="overflow-x-auto">
-                      <Table>
-                        <TableHeader>
-                          <TableRow>
-                            <TableHead className="sticky left-0 bg-background">Alumno</TableHead>
-                            <TableHead>DNI</TableHead>
-                            {materias.map((materia) => (
-                              <TableHead key={materia.id} className="text-center min-w-28">
-                                <div className="text-xs font-medium">{materia.codigo}</div>
-                                <div className="text-xs text-muted-foreground truncate max-w-24">{materia.nombre}</div>
-                              </TableHead>
-                            ))}
-                          </TableRow>
-                        </TableHeader>
-                        <TableBody>
-                          {allAlumnos.map((alumno) => {
-                            const enrolledMaterias = alumno.materia_alumnos?.map((ma: any) => ma.materia_id) || []
-                            return (
-                              <TableRow key={alumno.id}>
-                                <TableCell className="sticky left-0 bg-background font-medium whitespace-nowrap">
-                                  {alumno.apellido}, {alumno.nombre}
-                                </TableCell>
-                                <TableCell className="text-muted-foreground">{alumno.dni}</TableCell>
-                                {materias.map((materia) => {
-                                  const isEnrolled = enrolledMaterias.includes(materia.id)
-                                  if (!isEnrolled) {
-                                    return (
-                                      <TableCell key={materia.id} className="text-center">
-                                        <span className="text-muted-foreground text-xs">-</span>
-                                      </TableCell>
-                                    )
-                                  }
-                                  const stats = getAlumnoMateriaStats(alumno.id, materia.id)
-                                  return (
-                                    <TableCell key={materia.id} className="text-center">
-                                      <div className="flex flex-col items-center gap-1">
-                                        <span className={`font-semibold ${stats.porcentaje < 75 ? 'text-red-600' : 'text-green-600'}`}>
-                                          {stats.total > 0 ? `${stats.porcentaje}%` : 'N/A'}
-                                        </span>
-                                        {stats.total > 0 && (
-                                          <span className="text-xs text-muted-foreground">
-                                            {stats.presente + stats.justificado}/{stats.total}
-                                          </span>
-                                        )}
-                                      </div>
-                                    </TableCell>
-                                  )
-                                })}
-                              </TableRow>
-                            )
-                          })}
-                        </TableBody>
-                      </Table>
-                    </div>
-                  )}
-                </CardContent>
-              </Card>
             )}
           </TabsContent>
         </Tabs>

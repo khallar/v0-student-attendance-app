@@ -423,6 +423,71 @@ export async function getAsistenciasByAlumno(alumnoId: string) {
   return data
 }
 
+// Get full attendance report for a single alumno across all their materias, up to today
+export async function getInformeByAlumno(alumnoId: string) {
+  const supabase = createClient()
+  const today = new Date().toISOString()
+
+  // Get materias the alumno is enrolled in
+  const { data: enrollments, error: enrollError } = await supabase
+    .from('materia_alumnos')
+    .select('materias(id, nombre, codigo)')
+    .eq('alumno_id', alumnoId)
+  if (enrollError) throw enrollError
+
+  const materias = enrollments?.map((e: any) => e.materias).filter(Boolean) || []
+
+  // For each materia get clases up to today and the alumno's asistencias
+  const materiasConStats = await Promise.all(
+    materias.map(async (materia: any) => {
+      // All clases of this materia up to today
+      const { data: clases, error: clasesError } = await supabase
+        .from('clases')
+        .select('id, fecha, horario')
+        .eq('materia_id', materia.id)
+        .lte('fecha', today)
+        .order('fecha', { ascending: true })
+      if (clasesError) throw clasesError
+
+      if (!clases || clases.length === 0) {
+        return { ...materia, clases: [], presente: 0, ausente: 0, justificado: 0, tardanza: 0, total: 0, porcentaje: 0 }
+      }
+
+      // Asistencias of this alumno for those clases
+      const claseIds = clases.map((c: any) => c.id)
+      const { data: asistencias, error: asistError } = await supabase
+        .from('asistencias')
+        .select('clase_id, estado')
+        .eq('alumno_id', alumnoId)
+        .in('clase_id', claseIds)
+      if (asistError) throw asistError
+
+      const asistMap = new Map((asistencias || []).map((a: any) => [a.clase_id, a.estado?.toLowerCase()]))
+
+      let presente = 0, ausente = 0, justificado = 0, tardanza = 0
+      clases.forEach((c: any) => {
+        const estado = asistMap.get(c.id)
+        if (estado === 'presente') presente++
+        else if (estado === 'justificado') justificado++
+        else if (estado === 'tardanza') tardanza++
+        else ausente++ // no estado registrado = ausente
+      })
+
+      const total = clases.length
+      const porcentaje = total === 0 ? 0 : Math.round(((presente + justificado) / total) * 100)
+
+      const clasesConEstado = clases.map((c: any) => ({
+        ...c,
+        estado: asistMap.get(c.id) || 'ausente',
+      }))
+
+      return { ...materia, clases: clasesConEstado, presente, ausente, justificado, tardanza, total, porcentaje }
+    })
+  )
+
+  return materiasConStats
+}
+
 // Check if alumno is enrolled in materia by DNI and return alumno data
 export async function getAlumnoEnrolledByDni(materiaId: string, dni: string) {
   const supabase = createClient()
