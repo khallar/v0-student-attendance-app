@@ -84,11 +84,25 @@ export async function getAlumnosByMateria(materiaId: string) {
   const supabase = createClient()
   const { data, error } = await supabase
     .from('materia_alumnos')
-    .select('alumnos(*)')
+    .select(`
+      alumnos(
+        *,
+        materia_alumnos(
+          materias(id, nombre, codigo)
+        )
+      )
+    `)
     .eq('materia_id', materiaId)
     .order('alumnos(apellido)', { ascending: true })
   if (error) throw error
-  return data?.map((row: any) => row.alumnos) || []
+  // Each alumno gets its other_materias list (excluding current)
+  return (data?.map((row: any) => {
+    const alumno = row.alumnos
+    const otrasMaterias = (alumno.materia_alumnos || [])
+      .map((ma: any) => ma.materias)
+      .filter((m: any) => m && m.id !== materiaId)
+    return { ...alumno, otras_materias: otrasMaterias }
+  }) || [])
 }
 
 export async function createAlumno(nombre: string, apellido: string, dni: string, email: string) {

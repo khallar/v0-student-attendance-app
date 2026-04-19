@@ -10,7 +10,8 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { getAlumnosByMateria, createAlumno, addAlumnoToMateria, removeAlumnoFromMateria, getMaterias, findOrCreateAlumno, isAlumnoInMateria } from '@/lib/supabase/queries'
-import { Upload, Plus, Trash2, AlertCircle } from 'lucide-react'
+import { Upload, Plus, Trash2, AlertCircle, BookOpen } from 'lucide-react'
+import { Badge } from '@/components/ui/badge'
 
 export default function MateriaDetailPage() {
   const params = useParams()
@@ -23,6 +24,10 @@ export default function MateriaDetailPage() {
   const [csvPreview, setCsvPreview] = useState(false)
   const [csvErrors, setCsvErrors] = useState<string[]>([])
   const [formData, setFormData] = useState({ nombre: '', apellido: '', dni: '', email: '' })
+  const [addError, setAddError] = useState('')
+  const [adding, setAdding] = useState(false)
+  // When a DNI that already exists is entered, we show the found alumno
+  const [foundAlumno, setFoundAlumno] = useState<any>(null)
 
   useEffect(() => {
     loadData()
@@ -43,15 +48,62 @@ export default function MateriaDetailPage() {
     }
   }
 
+  // When DNI field loses focus, check if alumno already exists in the system
+  async function handleDniBlur() {
+    if (!formData.dni || formData.dni.length < 7) return
+    try {
+      const supabase = (await import('@/lib/supabase/client')).createClient()
+      const { data } = await supabase
+        .from('alumnos')
+        .select('*')
+        .eq('dni', formData.dni)
+        .single()
+      if (data) {
+        setFoundAlumno(data)
+        setFormData((prev) => ({
+          ...prev,
+          nombre: data.nombre,
+          apellido: data.apellido,
+          email: data.email,
+        }))
+      } else {
+        setFoundAlumno(null)
+      }
+    } catch {
+      setFoundAlumno(null)
+    }
+  }
+
   async function handleAddAlumno() {
     try {
-      const alumno = await createAlumno(formData.nombre, formData.apellido, formData.dni, formData.email)
+      setAdding(true)
+      setAddError('')
+      // findOrCreateAlumno handles both new and existing alumnos
+      const alumno = await findOrCreateAlumno(formData.nombre, formData.apellido, formData.dni, formData.email)
+      const alreadyEnrolled = await isAlumnoInMateria(materiaId, alumno.id)
+      if (alreadyEnrolled) {
+        setAddError('Este alumno ya está inscripto en esta materia.')
+        return
+      }
       await addAlumnoToMateria(materiaId, alumno.id)
       setFormData({ nombre: '', apellido: '', dni: '', email: '' })
+      setFoundAlumno(null)
       setDialogOpen(false)
       await loadData()
     } catch (error) {
       console.error('Error adding alumno:', error)
+      setAddError('Error al agregar el alumno. Verificá los datos.')
+    } finally {
+      setAdding(false)
+    }
+  }
+
+  function handleDialogOpenChange(open: boolean) {
+    setDialogOpen(open)
+    if (!open) {
+      setFormData({ nombre: '', apellido: '', dni: '', email: '' })
+      setFoundAlumno(null)
+      setAddError('')
     }
   }
 
@@ -193,7 +245,7 @@ export default function MateriaDetailPage() {
                   <CardTitle>Alumnos inscriptos</CardTitle>
                   <CardDescription>Gestiona los alumnos de esta materia</CardDescription>
                 </div>
-                <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
+                <Dialog open={dialogOpen} onOpenChange={handleDialogOpenChange}>
                   <DialogTrigger asChild>
                     <Button>
                       <Plus className="mr-2 h-4 w-4" />
@@ -202,16 +254,33 @@ export default function MateriaDetailPage() {
                   </DialogTrigger>
                   <DialogContent>
                     <DialogHeader>
-                      <DialogTitle>Agregar alumno</DialogTitle>
-                      <DialogDescription>Ingresa los datos del nuevo alumno</DialogDescription>
+                      <DialogTitle>Agregar alumno a la materia</DialogTitle>
+                      <DialogDescription>
+                        Ingresa el DNI para buscar un alumno existente o completar los datos para crear uno nuevo.
+                      </DialogDescription>
                     </DialogHeader>
                     <div className="space-y-4">
+                      <div>
+                        <label className="text-sm font-medium">DNI</label>
+                        <Input
+                          value={formData.dni}
+                          onChange={(e) => { setFormData({ ...formData, dni: e.target.value }); setFoundAlumno(null) }}
+                          onBlur={handleDniBlur}
+                          placeholder="12345678"
+                        />
+                      </div>
+                      {foundAlumno && (
+                        <div className="rounded-md border border-blue-200 bg-blue-50 px-3 py-2 text-sm text-blue-800">
+                          Alumno encontrado en el sistema: <strong>{foundAlumno.nombre} {foundAlumno.apellido}</strong>. Se inscribirá en esta materia.
+                        </div>
+                      )}
                       <div>
                         <label className="text-sm font-medium">Nombre</label>
                         <Input
                           value={formData.nombre}
                           onChange={(e) => setFormData({ ...formData, nombre: e.target.value })}
                           placeholder="Juan"
+                          disabled={!!foundAlumno}
                         />
                       </div>
                       <div>
@@ -220,14 +289,7 @@ export default function MateriaDetailPage() {
                           value={formData.apellido}
                           onChange={(e) => setFormData({ ...formData, apellido: e.target.value })}
                           placeholder="Pérez"
-                        />
-                      </div>
-                      <div>
-                        <label className="text-sm font-medium">DNI</label>
-                        <Input
-                          value={formData.dni}
-                          onChange={(e) => setFormData({ ...formData, dni: e.target.value })}
-                          placeholder="12345678"
+                          disabled={!!foundAlumno}
                         />
                       </div>
                       <div>
@@ -237,14 +299,23 @@ export default function MateriaDetailPage() {
                           onChange={(e) => setFormData({ ...formData, email: e.target.value })}
                           placeholder="juan@ejemplo.com"
                           type="email"
+                          disabled={!!foundAlumno}
                         />
                       </div>
+                      {addError && (
+                        <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800">
+                          {addError}
+                        </div>
+                      )}
                       <div className="flex gap-2 justify-end">
-                        <Button variant="outline" onClick={() => setDialogOpen(false)}>
+                        <Button variant="outline" onClick={() => handleDialogOpenChange(false)}>
                           Cancelar
                         </Button>
-                        <Button onClick={handleAddAlumno} disabled={!formData.nombre || !formData.apellido || !formData.dni}>
-                          Agregar
+                        <Button
+                          onClick={handleAddAlumno}
+                          disabled={!formData.dni || !formData.nombre || !formData.apellido || adding}
+                        >
+                          {adding ? 'Agregando...' : 'Agregar'}
                         </Button>
                       </div>
                     </div>
@@ -263,6 +334,7 @@ export default function MateriaDetailPage() {
                         <TableHead>Nombre</TableHead>
                         <TableHead>DNI</TableHead>
                         <TableHead>Email</TableHead>
+                        <TableHead>Otras materias</TableHead>
                         <TableHead className="text-right">Acciones</TableHead>
                       </TableRow>
                     </TableHeader>
@@ -272,14 +344,29 @@ export default function MateriaDetailPage() {
                           <TableCell className="font-medium">
                             {alumno.nombre} {alumno.apellido}
                           </TableCell>
-                          <TableCell className="text-muted-foreground">{alumno.dni}</TableCell>
+                          <TableCell className="text-muted-foreground font-mono text-sm">{alumno.dni}</TableCell>
                           <TableCell className="text-sm">{alumno.email}</TableCell>
+                          <TableCell>
+                            {alumno.otras_materias && alumno.otras_materias.length > 0 ? (
+                              <div className="flex flex-wrap gap-1">
+                                {alumno.otras_materias.map((m: any) => (
+                                  <Badge key={m.id} variant="secondary" className="text-xs font-normal">
+                                    <BookOpen className="mr-1 h-3 w-3" />
+                                    {m.codigo}
+                                  </Badge>
+                                ))}
+                              </div>
+                            ) : (
+                              <span className="text-xs text-muted-foreground">—</span>
+                            )}
+                          </TableCell>
                           <TableCell className="text-right">
                             <Button
                               variant="ghost"
                               size="sm"
                               className="text-red-600 hover:text-red-700"
                               onClick={() => handleRemoveAlumno(alumno.id)}
+                              title="Quitar de esta materia"
                             >
                               <Trash2 className="h-4 w-4" />
                             </Button>
