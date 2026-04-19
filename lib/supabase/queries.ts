@@ -11,21 +11,62 @@ export async function getMaterias() {
   return data
 }
 
-export async function createMateria(nombre: string, codigo: string, profesor: string) {
+export async function createMateria(
+  nombre: string,
+  codigo: string,
+  profesor: string,
+  repeticion?: string,
+  fecha_inicio?: string,
+  fecha_fin?: string,
+  dias_dictado?: string,
+  hora_desde?: string,
+  hora_hasta?: string
+) {
   const supabase = createClient()
   const { data, error } = await supabase
     .from('materias')
-    .insert([{ nombre, codigo, profesor }])
+    .insert([{
+      nombre,
+      codigo,
+      profesor,
+      repeticion: repeticion || 'nunca',
+      fecha_inicio,
+      fecha_fin,
+      dias_dictado,
+      hora_desde,
+      hora_hasta
+    }])
     .select()
   if (error) throw error
   return data[0]
 }
 
-export async function updateMateria(id: string, nombre: string, codigo: string, profesor: string) {
+export async function updateMateria(
+  id: string,
+  nombre: string,
+  codigo: string,
+  profesor: string,
+  repeticion?: string,
+  fecha_inicio?: string,
+  fecha_fin?: string,
+  dias_dictado?: string,
+  hora_desde?: string,
+  hora_hasta?: string
+) {
   const supabase = createClient()
   const { data, error } = await supabase
     .from('materias')
-    .update({ nombre, codigo, profesor })
+    .update({
+      nombre,
+      codigo,
+      profesor,
+      repeticion: repeticion || 'nunca',
+      fecha_inicio,
+      fecha_fin,
+      dias_dictado,
+      hora_desde,
+      hora_hasta
+    })
     .eq('id', id)
     .select()
   if (error) throw error
