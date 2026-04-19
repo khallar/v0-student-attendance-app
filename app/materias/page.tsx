@@ -9,7 +9,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Checkbox } from '@/components/ui/checkbox'
-import { getMaterias, createMateria, updateMateria, deleteMateria } from '@/lib/supabase/queries'
+import { getMaterias, createMateria, updateMateria, deleteMateria, generateClasesForMateria, regenerateClasesForMateria } from '@/lib/supabase/queries'
 import { Pencil, Trash2, Plus, Users } from 'lucide-react'
 import Link from 'next/link'
 
@@ -35,6 +35,7 @@ const REPETICION_OPTIONS = [
 export default function MateriasPage() {
   const [materias, setMaterias] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
+  const [saving, setSaving] = useState(false)
   const [dialogOpen, setDialogOpen] = useState(false)
   const [editingId, setEditingId] = useState<string | null>(null)
   const [formData, setFormData] = useState({
@@ -67,8 +68,11 @@ export default function MateriasPage() {
 
   async function handleSave() {
     try {
+      setSaving(true)
+      let materiaId: string
+      
       if (editingId) {
-        await updateMateria(
+        const materia = await updateMateria(
           editingId,
           formData.nombre,
           formData.codigo,
@@ -80,8 +84,23 @@ export default function MateriasPage() {
           formData.hora_desde,
           formData.hora_hasta
         )
+        materiaId = materia.id
+        
+        // Regenerate clases if schedule changed
+        if (formData.repeticion !== 'nunca' && formData.fecha_inicio && formData.fecha_fin) {
+          const clases = await regenerateClasesForMateria(
+            materiaId,
+            formData.repeticion,
+            formData.fecha_inicio,
+            formData.fecha_fin,
+            formData.dias_dictado,
+            formData.hora_desde,
+            formData.hora_hasta
+          )
+          alert(`Se regeneraron ${clases.length} clases automaticamente.`)
+        }
       } else {
-        await createMateria(
+        const materia = await createMateria(
           formData.nombre,
           formData.codigo,
           formData.profesor,
@@ -92,12 +111,30 @@ export default function MateriasPage() {
           formData.hora_desde,
           formData.hora_hasta
         )
+        materiaId = materia.id
+        
+        // Generate clases for new materia
+        if (formData.repeticion !== 'nunca' && formData.fecha_inicio && formData.fecha_fin) {
+          const clases = await generateClasesForMateria(
+            materiaId,
+            formData.repeticion,
+            formData.fecha_inicio,
+            formData.fecha_fin,
+            formData.dias_dictado,
+            formData.hora_desde,
+            formData.hora_hasta
+          )
+          alert(`Se crearon ${clases.length} clases automaticamente.`)
+        }
       }
       resetForm()
       setDialogOpen(false)
       await loadMaterias()
     } catch (error) {
       console.error('Error saving materia:', error)
+      alert('Error al guardar la materia')
+    } finally {
+      setSaving(false)
     }
   }
 
@@ -290,14 +327,14 @@ export default function MateriasPage() {
                 </div>
 
                 <div className="flex gap-2 justify-end pt-4">
-                  <Button variant="outline" onClick={() => setDialogOpen(false)}>
+                  <Button variant="outline" onClick={() => setDialogOpen(false)} disabled={saving}>
                     Cancelar
                   </Button>
                   <Button
                     onClick={handleSave}
-                    disabled={!formData.nombre || !formData.codigo}
+                    disabled={!formData.nombre || !formData.codigo || saving}
                   >
-                    Guardar
+                    {saving ? 'Guardando...' : 'Guardar'}
                   </Button>
                 </div>
               </div>

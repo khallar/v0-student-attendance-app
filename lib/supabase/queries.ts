@@ -162,6 +162,138 @@ export async function deleteClase(claseId: string) {
   if (error) throw error
 }
 
+// Delete all clases for a materia (used when regenerating schedule)
+export async function deleteClasesByMateria(materiaId: string) {
+  const supabase = createClient()
+  const { error } = await supabase.from('clases').delete().eq('materia_id', materiaId)
+  if (error) throw error
+}
+
+// Generate clases based on materia schedule
+export async function generateClasesForMateria(
+  materiaId: string,
+  repeticion: string,
+  fecha_inicio: string,
+  fecha_fin: string,
+  dias_dictado: string[],
+  hora_desde: string,
+  hora_hasta: string
+) {
+  if (!fecha_inicio || !fecha_fin || repeticion === 'nunca') return []
+  
+  const supabase = createClient()
+  const clases: { materia_id: string; fecha: string; horario: string; codigo_autoasistencia: string }[] = []
+  
+  // Map day keys to JS day numbers (0 = Sunday, 1 = Monday, etc.)
+  const dayKeyToNumber: Record<string, number> = {
+    'd': 0, // Domingo
+    'l': 1, // Lunes
+    'm': 2, // Martes
+    'x': 3, // Miércoles
+    'j': 4, // Jueves
+    'v': 5, // Viernes
+    's': 6, // Sábado
+  }
+  
+  const targetDays = dias_dictado.map(d => dayKeyToNumber[d]).filter(d => d !== undefined)
+  const horario = hora_desde && hora_hasta ? `${hora_desde} - ${hora_hasta}` : ''
+  
+  const startDate = new Date(fecha_inicio)
+  const endDate = new Date(fecha_fin)
+  let currentDate = new Date(startDate)
+  
+  // Get interval in days based on repetition
+  const getIntervalDays = (rep: string): number => {
+    switch (rep) {
+      case 'cada_dia': return 1
+      case 'cada_semana': return 7
+      case 'cada_2_semanas': return 14
+      case 'cada_mes': return 30
+      case 'cada_ano': return 365
+      default: return 0
+    }
+  }
+  
+  const intervalDays = getIntervalDays(repeticion)
+  if (intervalDays === 0) return []
+  
+  // For weekly/bi-weekly, we iterate day by day
+  // For daily/monthly/yearly we use the interval
+  if (repeticion === 'cada_semana' || repeticion === 'cada_2_semanas') {
+    // Find all matching days in each week/bi-week period
+    while (currentDate <= endDate) {
+      const dayOfWeek = currentDate.getDay()
+      
+      if (targetDays.length === 0 || targetDays.includes(dayOfWeek)) {
+        const codigo = Math.random().toString(36).substring(2, 8).toUpperCase()
+        clases.push({
+          materia_id: materiaId,
+          fecha: currentDate.toISOString(),
+          horario,
+          codigo_autoasistencia: codigo,
+        })
+      }
+      
+      currentDate.setDate(currentDate.getDate() + 1)
+      
+      // Skip extra days for bi-weekly
+      if (repeticion === 'cada_2_semanas' && currentDate.getDay() === startDate.getDay()) {
+        currentDate.setDate(currentDate.getDate() + 7) // Skip one week
+      }
+    }
+  } else {
+    // For daily, monthly, yearly - use simple interval
+    while (currentDate <= endDate) {
+      const dayOfWeek = currentDate.getDay()
+      
+      if (targetDays.length === 0 || targetDays.includes(dayOfWeek)) {
+        const codigo = Math.random().toString(36).substring(2, 8).toUpperCase()
+        clases.push({
+          materia_id: materiaId,
+          fecha: currentDate.toISOString(),
+          horario,
+          codigo_autoasistencia: codigo,
+        })
+      }
+      
+      currentDate.setDate(currentDate.getDate() + intervalDays)
+    }
+  }
+  
+  // Insert all clases in batch
+  if (clases.length > 0) {
+    const { error } = await supabase.from('clases').insert(clases)
+    if (error) throw error
+  }
+  
+  return clases
+}
+
+// Regenerate clases for a materia (delete existing and create new)
+export async function regenerateClasesForMateria(
+  materiaId: string,
+  repeticion: string,
+  fecha_inicio: string,
+  fecha_fin: string,
+  dias_dictado: string[],
+  hora_desde: string,
+  hora_hasta: string
+) {
+  // First delete existing clases for this materia
+  await deleteClasesByMateria(materiaId)
+  
+  // Then generate new ones based on schedule
+  return generateClasesForMateria(
+    materiaId,
+    repeticion,
+    fecha_inicio,
+    fecha_fin,
+    dias_dictado,
+    hora_desde,
+    hora_hasta
+  )
+}
+
 // Asistencias
 export async function getAsistenciasByClase(claseId: string) {
   const supabase = createClient()
