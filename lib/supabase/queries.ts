@@ -378,6 +378,37 @@ export async function isAlumnoInMateria(materiaId: string, alumnoId: string) {
   return !!data
 }
 
+// Get all alumnos with their materia enrollments
+export async function getAllAlumnosWithMaterias() {
+  const supabase = createClient()
+  const { data, error } = await supabase
+    .from('alumnos')
+    .select(`
+      *,
+      materia_alumnos(
+        materia_id,
+        materias(id, nombre, codigo)
+      )
+    `)
+    .order('apellido', { ascending: true })
+  if (error) throw error
+  return data
+}
+
+// Get all asistencias for an alumno across all materias
+export async function getAsistenciasByAlumno(alumnoId: string) {
+  const supabase = createClient()
+  const { data, error } = await supabase
+    .from('asistencias')
+    .select(`
+      *,
+      clases(id, fecha, horario, materia_id)
+    `)
+    .eq('alumno_id', alumnoId)
+  if (error) throw error
+  return data
+}
+
 // Check if alumno is enrolled in materia by DNI and return alumno data
 export async function getAlumnoEnrolledByDni(materiaId: string, dni: string) {
   const supabase = createClient()
