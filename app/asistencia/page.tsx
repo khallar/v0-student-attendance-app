@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, Suspense } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { AuthGuard } from '@/components/auth-guard'
 import { AsistenciaGrid } from '@/components/asistencia-grid'
@@ -24,7 +24,7 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, Di
 import { Input } from '@/components/ui/input'
 import QRCode from 'react-qr-code'
 
-export default function AsistenciaPage() {
+function AsistenciaPageContent() {
   const router = useRouter()
   const searchParams = useSearchParams()
   const materiaIdParam = searchParams.get('materia')
@@ -431,7 +431,7 @@ export default function AsistenciaPage() {
           <Card className="flex items-center justify-center py-12">
             <div className="text-center">
               <p className="text-muted-foreground mb-4">Selecciona una clase o crea una nueva</p>
-              <Button onClick={handleCreateClase}>
+              <Button onClick={() => setNewClaseDialogOpen(true)}>
                 <Plus className="mr-2 h-4 w-4" />
                 Crear nueva clase
               </Button>
@@ -446,5 +446,17 @@ export default function AsistenciaPage() {
         )}
       </div>
     </AuthGuard>
+  )
+}
+
+export default function AsistenciaPage() {
+  return (
+    <Suspense fallback={
+      <div className="flex min-h-[50vh] items-center justify-center">
+        <div className="text-muted-foreground">Cargando...</div>
+      </div>
+    }>
+      <AsistenciaPageContent />
+    </Suspense>
   )
 }
