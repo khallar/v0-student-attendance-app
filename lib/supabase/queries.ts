@@ -20,7 +20,9 @@ export async function createMateria(
   fecha_fin: string = '',
   dias_dictado: string[] = [],
   hora_desde: string = '',
-  hora_hasta: string = ''
+  hora_hasta: string = '',
+  ubicacion: string = '',
+  horarios_por_dia: Record<string, { desde: string; hasta: string }> = {}
 ) {
   const supabase = createClient()
   const { data, error } = await supabase
@@ -34,7 +36,9 @@ export async function createMateria(
       fecha_fin: fecha_fin || null,
       dias_dictado: dias_dictado.length > 0 ? dias_dictado : null,
       hora_desde: hora_desde || null,
-      hora_hasta: hora_hasta || null
+      hora_hasta: hora_hasta || null,
+      ubicacion: ubicacion || null,
+      horarios_por_dia: Object.keys(horarios_por_dia).length > 0 ? horarios_por_dia : null
     }])
     .select()
   if (error) throw error
@@ -51,7 +55,9 @@ export async function updateMateria(
   fecha_fin: string = '',
   dias_dictado: string[] = [],
   hora_desde: string = '',
-  hora_hasta: string = ''
+  hora_hasta: string = '',
+  ubicacion: string = '',
+  horarios_por_dia: Record<string, { desde: string; hasta: string }> = {}
 ) {
   const supabase = createClient()
   const { data, error } = await supabase
@@ -65,7 +71,9 @@ export async function updateMateria(
       fecha_fin: fecha_fin || null,
       dias_dictado: dias_dictado.length > 0 ? dias_dictado : null,
       hora_desde: hora_desde || null,
-      hora_hasta: hora_hasta || null
+      hora_hasta: hora_hasta || null,
+      ubicacion: ubicacion || null,
+      horarios_por_dia: Object.keys(horarios_por_dia).length > 0 ? horarios_por_dia : null
     })
     .eq('id', id)
     .select()
@@ -158,12 +166,12 @@ export async function getClaseById(claseId: string) {
   return data
 }
 
-export async function createClase(materiaId: string, fecha: string, horario: string) {
+export async function createClase(materiaId: string, fecha: string, horario: string, ubicacion: string = '') {
   const supabase = createClient()
   const codigo = Math.random().toString(36).substring(2, 8).toUpperCase()
   const { data, error } = await supabase
     .from('clases')
-    .insert([{ materia_id: materiaId, fecha, horario, codigo_autoasistencia: codigo }])
+    .insert([{ materia_id: materiaId, fecha, horario, ubicacion: ubicacion || null, codigo_autoasistencia: codigo }])
     .select()
   if (error) throw error
   return data[0]
@@ -191,12 +199,14 @@ export async function generateClasesForMateria(
   fecha_fin: string,
   dias_dictado: string[],
   hora_desde: string,
-  hora_hasta: string
+  hora_hasta: string,
+  ubicacion: string = '',
+  horarios_por_dia: Record<string, { desde: string; hasta: string }> = {}
 ) {
   if (!fecha_inicio || !fecha_fin || repeticion === 'nunca') return []
   
   const supabase = createClient()
-  const clases: { materia_id: string; fecha: string; horario: string; codigo_autoasistencia: string }[] = []
+  const clases: { materia_id: string; fecha: string; horario: string; ubicacion: string | null; codigo_autoasistencia: string }[] = []
   
   // Map day keys to JS day numbers (0 = Sunday, 1 = Monday, etc.)
   const dayKeyToNumber: Record<string, number> = {
@@ -209,8 +219,21 @@ export async function generateClasesForMateria(
     's': 6, // Sábado
   }
   
+  const numberToDayKey: Record<number, string> = {
+    0: 'd', 1: 'l', 2: 'm', 3: 'x', 4: 'j', 5: 'v', 6: 's'
+  }
+  
   const targetDays = dias_dictado.map(d => dayKeyToNumber[d]).filter(d => d !== undefined)
-  const horario = hora_desde && hora_hasta ? `${hora_desde} - ${hora_hasta}` : ''
+  
+  // Helper to get horario for a specific day
+  const getHorarioForDay = (dayNumber: number): string => {
+    const dayKey = numberToDayKey[dayNumber]
+    if (horarios_por_dia && horarios_por_dia[dayKey]) {
+      return `${horarios_por_dia[dayKey].desde} - ${horarios_por_dia[dayKey].hasta}`
+    }
+    // Fallback to general hora_desde/hora_hasta
+    return hora_desde && hora_hasta ? `${hora_desde} - ${hora_hasta}` : ''
+  }
   
   const startDate = new Date(fecha_inicio)
   const endDate = new Date(fecha_fin)
@@ -243,7 +266,8 @@ export async function generateClasesForMateria(
         clases.push({
           materia_id: materiaId,
           fecha: currentDate.toISOString(),
-          horario,
+          horario: getHorarioForDay(dayOfWeek),
+          ubicacion: ubicacion || null,
           codigo_autoasistencia: codigo,
         })
       }
@@ -265,7 +289,8 @@ export async function generateClasesForMateria(
         clases.push({
           materia_id: materiaId,
           fecha: currentDate.toISOString(),
-          horario,
+          horario: getHorarioForDay(dayOfWeek),
+          ubicacion: ubicacion || null,
           codigo_autoasistencia: codigo,
         })
       }
@@ -291,7 +316,9 @@ export async function regenerateClasesForMateria(
   fecha_fin: string,
   dias_dictado: string[],
   hora_desde: string,
-  hora_hasta: string
+  hora_hasta: string,
+  ubicacion: string = '',
+  horarios_por_dia: Record<string, { desde: string; hasta: string }> = {}
 ) {
   // First delete existing clases for this materia
   await deleteClasesByMateria(materiaId)
@@ -304,7 +331,9 @@ export async function regenerateClasesForMateria(
     fecha_fin,
     dias_dictado,
     hora_desde,
-    hora_hasta
+    hora_hasta,
+    ubicacion,
+    horarios_por_dia
   )
 }
 

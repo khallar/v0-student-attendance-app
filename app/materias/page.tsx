@@ -10,7 +10,7 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, Di
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Checkbox } from '@/components/ui/checkbox'
 import { getMaterias, createMateria, updateMateria, deleteMateria, generateClasesForMateria, regenerateClasesForMateria } from '@/lib/supabase/queries'
-import { Pencil, Trash2, Plus, Users } from 'lucide-react'
+import { Pencil, Trash2, Plus, Users, MapPin } from 'lucide-react'
 import Link from 'next/link'
 
 const DAYS_OF_WEEK = [
@@ -48,6 +48,8 @@ export default function MateriasPage() {
     dias_dictado: [] as string[],
     hora_desde: '',
     hora_hasta: '',
+    ubicacion: '',
+    horarios_por_dia: {} as Record<string, { desde: string; hasta: string }>,
   })
 
   useEffect(() => {
@@ -82,7 +84,9 @@ export default function MateriasPage() {
           formData.fecha_fin,
           formData.dias_dictado,
           formData.hora_desde,
-          formData.hora_hasta
+          formData.hora_hasta,
+          formData.ubicacion,
+          formData.horarios_por_dia
         )
         materiaId = materia.id
         
@@ -95,7 +99,9 @@ export default function MateriasPage() {
             formData.fecha_fin,
             formData.dias_dictado,
             formData.hora_desde,
-            formData.hora_hasta
+            formData.hora_hasta,
+            formData.ubicacion,
+            formData.horarios_por_dia
           )
           alert(`Se regeneraron ${clases.length} clases automaticamente.`)
         }
@@ -109,7 +115,9 @@ export default function MateriasPage() {
           formData.fecha_fin,
           formData.dias_dictado,
           formData.hora_desde,
-          formData.hora_hasta
+          formData.hora_hasta,
+          formData.ubicacion,
+          formData.horarios_por_dia
         )
         materiaId = materia.id
         
@@ -122,7 +130,9 @@ export default function MateriasPage() {
             formData.fecha_fin,
             formData.dias_dictado,
             formData.hora_desde,
-            formData.hora_hasta
+            formData.hora_hasta,
+            formData.ubicacion,
+            formData.horarios_por_dia
           )
           alert(`Se crearon ${clases.length} clases automaticamente.`)
         }
@@ -149,6 +159,8 @@ export default function MateriasPage() {
       dias_dictado: [],
       hora_desde: '',
       hora_hasta: '',
+      ubicacion: '',
+      horarios_por_dia: {},
     })
     setEditingId(null)
   }
@@ -164,6 +176,8 @@ export default function MateriasPage() {
       dias_dictado: materia.dias_dictado || [],
       hora_desde: materia.hora_desde || '',
       hora_hasta: materia.hora_hasta || '',
+      ubicacion: materia.ubicacion || '',
+      horarios_por_dia: materia.horarios_por_dia || {},
     })
     setEditingId(materia.id)
     setDialogOpen(true)
@@ -186,11 +200,32 @@ export default function MateriasPage() {
   }
 
   function toggleDay(day: string) {
+    setFormData((prev) => {
+      const isSelected = prev.dias_dictado.includes(day)
+      const newDias = isSelected
+        ? prev.dias_dictado.filter((d) => d !== day)
+        : [...prev.dias_dictado, day]
+      
+      // Also update horarios_por_dia
+      const newHorarios = { ...prev.horarios_por_dia }
+      if (isSelected) {
+        delete newHorarios[day]
+      } else {
+        // Initialize with default hours if available
+        newHorarios[day] = { desde: prev.hora_desde || '', hasta: prev.hora_hasta || '' }
+      }
+      
+      return { ...prev, dias_dictado: newDias, horarios_por_dia: newHorarios }
+    })
+  }
+
+  function updateHorarioDia(day: string, field: 'desde' | 'hasta', value: string) {
     setFormData((prev) => ({
       ...prev,
-      dias_dictado: prev.dias_dictado.includes(day)
-        ? prev.dias_dictado.filter((d) => d !== day)
-        : [...prev.dias_dictado, day],
+      horarios_por_dia: {
+        ...prev.horarios_por_dia,
+        [day]: { ...prev.horarios_por_dia[day], [field]: value },
+      },
     }))
   }
 
@@ -244,6 +279,14 @@ export default function MateriasPage() {
                       placeholder="Ej: Juan Pérez"
                     />
                   </div>
+                  <div>
+                    <label className="text-sm font-medium">Ubicacion</label>
+                    <Input
+                      value={formData.ubicacion}
+                      onChange={(e) => setFormData({ ...formData, ubicacion: e.target.value })}
+                      placeholder="Ej: Aula 101, Edificio A"
+                    />
+                  </div>
                 </div>
 
                 {/* Horario y repetición */}
@@ -285,20 +328,40 @@ export default function MateriasPage() {
                   </div>
 
                   <div>
-                    <label className="text-sm font-medium mb-3 block">Días de Dictado</label>
-                    <div className="grid grid-cols-4 gap-3">
-                      {DAYS_OF_WEEK.map((day) => (
-                        <div key={day.key} className="flex items-center gap-2">
-                          <Checkbox
-                            id={`day-${day.key}`}
-                            checked={formData.dias_dictado.includes(day.key)}
-                            onCheckedChange={() => toggleDay(day.key)}
-                          />
-                          <label htmlFor={`day-${day.key}`} className="text-sm cursor-pointer">
-                            {day.label.slice(0, 1)}
-                          </label>
-                        </div>
-                      ))}
+                    <label className="text-sm font-medium mb-3 block">Días de Dictado y Horarios</label>
+                    <div className="space-y-2">
+                      {DAYS_OF_WEEK.map((day) => {
+                        const isSelected = formData.dias_dictado.includes(day.key)
+                        return (
+                          <div key={day.key} className="flex items-center gap-3">
+                            <Checkbox
+                              id={`day-${day.key}`}
+                              checked={isSelected}
+                              onCheckedChange={() => toggleDay(day.key)}
+                            />
+                            <label htmlFor={`day-${day.key}`} className="text-sm cursor-pointer w-20">
+                              {day.label}
+                            </label>
+                            {isSelected && (
+                              <div className="flex items-center gap-2">
+                                <Input
+                                  type="time"
+                                  value={formData.horarios_por_dia[day.key]?.desde || ''}
+                                  onChange={(e) => updateHorarioDia(day.key, 'desde', e.target.value)}
+                                  className="w-28"
+                                />
+                                <span className="text-muted-foreground">a</span>
+                                <Input
+                                  type="time"
+                                  value={formData.horarios_por_dia[day.key]?.hasta || ''}
+                                  onChange={(e) => updateHorarioDia(day.key, 'hasta', e.target.value)}
+                                  className="w-28"
+                                />
+                              </div>
+                            )}
+                          </div>
+                        )
+                      })}
                     </div>
                   </div>
                 </div>
@@ -364,7 +427,7 @@ export default function MateriasPage() {
                   <TableHead>Nombre</TableHead>
                   <TableHead>Código</TableHead>
                   <TableHead>Profesor</TableHead>
-                  <TableHead>Horario</TableHead>
+                  <TableHead>Horario / Ubicacion</TableHead>
                   <TableHead className="text-right">Acciones</TableHead>
                 </TableRow>
               </TableHeader>
@@ -375,15 +438,32 @@ export default function MateriasPage() {
                     <TableCell className="text-muted-foreground">{materia.codigo}</TableCell>
                     <TableCell>{materia.profesor}</TableCell>
                     <TableCell className="text-sm">
-                      {materia.hora_desde && materia.hora_hasta ? (
+                      {materia.dias_dictado && materia.dias_dictado.length > 0 ? (
                         <div className="space-y-1">
-                          <div>{materia.hora_desde} - {materia.hora_hasta}</div>
-                          {materia.dias_dictado && materia.dias_dictado.length > 0 && (
-                            <div className="text-xs text-muted-foreground">
+                          {materia.horarios_por_dia ? (
+                            <div className="text-xs space-y-0.5">
                               {materia.dias_dictado.map((d: string) => {
                                 const day = DAYS_OF_WEEK.find((day) => day.key === d)
-                                return day?.label.slice(0, 1)
-                              }).join('/')}
+                                const h = materia.horarios_por_dia[d]
+                                return (
+                                  <div key={d}>
+                                    <span className="font-medium">{day?.label.slice(0, 2)}</span>: {h?.desde || '-'} - {h?.hasta || '-'}
+                                  </div>
+                                )
+                              })}
+                            </div>
+                          ) : materia.hora_desde && materia.hora_hasta ? (
+                            <div>
+                              {materia.hora_desde} - {materia.hora_hasta}
+                              <div className="text-xs text-muted-foreground">
+                                {materia.dias_dictado.map((d: string) => DAYS_OF_WEEK.find((day) => day.key === d)?.label.slice(0, 1)).join('/')}
+                              </div>
+                            </div>
+                          ) : null}
+                          {materia.ubicacion && (
+                            <div className="text-xs text-muted-foreground flex items-center gap-1">
+                              <MapPin className="h-3 w-3" />
+                              {materia.ubicacion}
                             </div>
                           )}
                         </div>
