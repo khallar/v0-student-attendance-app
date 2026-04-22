@@ -128,7 +128,8 @@ export default function MateriaDetailPage() {
       const lines = csv.trim().split('\n')
       const errors: string[] = []
       const data: any[] = []
-      const existingDnis = new Set(alumnos.map((a: any) => a.dni))
+      const enrolledDnis = new Set(alumnos.map((a: any) => a.dni))
+      const seenDnis = new Set<string>()
 
       lines.forEach((line, index) => {
         if (index === 0) return // Skip header
@@ -139,10 +140,18 @@ export default function MateriaDetailPage() {
           return
         }
 
-        if (existingDnis.has(dni)) {
-          errors.push(`Fila ${index + 1}: DNI ${dni} ya existe`)
+        // Check if already enrolled in this materia
+        if (enrolledDnis.has(dni)) {
+          errors.push(`Fila ${index + 1}: DNI ${dni} ya inscripto en esta materia`)
           return
         }
+
+        // Check for duplicates within the CSV itself
+        if (seenDnis.has(dni)) {
+          errors.push(`Fila ${index + 1}: DNI ${dni} duplicado en el archivo`)
+          return
+        }
+        seenDnis.add(dni)
 
         if (!/^[0-9]{7,8}$/.test(dni)) {
           errors.push(`Fila ${index + 1}: DNI ${dni} inválido`)
@@ -165,11 +174,12 @@ export default function MateriaDetailPage() {
   }
 
   async function handleImportCSV() {
-    try {
-      let imported = 0
-      let skipped = 0
-      
-      for (const row of csvData) {
+    let imported = 0
+    let skipped = 0
+    const errors: string[] = []
+    
+    for (const row of csvData) {
+      try {
         // Find existing alumno or create new one
         const alumno = await findOrCreateAlumno(row.nombre, row.apellido, row.dni, row.email)
         
@@ -181,20 +191,29 @@ export default function MateriaDetailPage() {
         } else {
           skipped++
         }
+      } catch (error: any) {
+        // Handle duplicate key constraint error gracefully
+        if (error?.code === '23505') {
+          skipped++
+        } else {
+          errors.push(`${row.dni}: ${error?.message || 'Error desconocido'}`)
+        }
       }
-      
-      setCsvData([])
-      setCsvErrors([])
-      setCsvPreview(false)
-      await loadData()
-      
-      if (skipped > 0) {
-        alert(`Importacion completada: ${imported} alumnos agregados, ${skipped} ya estaban inscriptos.`)
-      }
-    } catch (error) {
-      console.error('Error importing CSV:', error)
-      alert('Error al importar: ' + (error as Error).message)
     }
+    
+    setCsvData([])
+    setCsvErrors([])
+    setCsvPreview(false)
+    await loadData()
+    
+    let message = `Importacion completada: ${imported} alumnos agregados.`
+    if (skipped > 0) {
+      message += ` ${skipped} ya estaban inscriptos.`
+    }
+    if (errors.length > 0) {
+      message += `\n\nErrores: ${errors.join(', ')}`
+    }
+    alert(message)
   }
 
   if (loading) {
