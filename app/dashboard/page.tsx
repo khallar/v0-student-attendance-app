@@ -9,6 +9,7 @@ import { BookOpen, Users, ClipboardCheck, BarChart3 } from 'lucide-react'
 export default function DashboardPage() {
   const features = [
     {
+      id: 'materias',
       title: 'Materias',
       description: 'Gestiona las materias y asigna profesores',
       href: '/materias',
@@ -16,6 +17,7 @@ export default function DashboardPage() {
       color: 'bg-blue-100 text-blue-600',
     },
     {
+      id: 'alumnos',
       title: 'Alumnos',
       description: 'Importa y gestiona alumnos de las materias',
       href: '/materias',
@@ -23,6 +25,7 @@ export default function DashboardPage() {
       color: 'bg-green-100 text-green-600',
     },
     {
+      id: 'asistencia',
       title: 'Asistencia',
       description: 'Toma de asistencia rápida y eficiente',
       href: '/asistencia',
@@ -30,6 +33,7 @@ export default function DashboardPage() {
       color: 'bg-purple-100 text-purple-600',
     },
     {
+      id: 'informes',
       title: 'Informes',
       description: 'Reportes de asistencia y estadísticas',
       href: '/informes',
@@ -55,7 +59,7 @@ export default function DashboardPage() {
             {features.map((feature) => {
               const Icon = feature.icon
               return (
-                <Link key={feature.href} href={feature.href}>
+                <Link key={feature.id} href={feature.href}>
                   <Card className="h-full hover:shadow-lg transition-shadow cursor-pointer">
                     <CardHeader>
                       <div className={`w-12 h-12 rounded-lg ${feature.color} flex items-center justify-center mb-4`}>
