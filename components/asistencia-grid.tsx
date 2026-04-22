@@ -23,13 +23,15 @@ interface AsistenciaGridProps {
   asistencias: Record<string, string>
   onAsistenciaChange: (alumnoId: string, estado: string) => void
   loading?: boolean
+  recentUpdates?: string[] // IDs of recently updated alumnos (for realtime visual feedback)
 }
 
 export function AsistenciaGrid({
   alumnos,
   asistencias,
   onAsistenciaChange,
-  loading = false
+  loading = false,
+  recentUpdates = []
 }: AsistenciaGridProps) {
   const [searchTerm, setSearchTerm] = useState('')
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('asc')
@@ -109,10 +111,25 @@ export function AsistenciaGrid({
           <tbody>
             {sorted.map((alumno, idx) => {
               const estado = asistencias[alumno.id] || 'ausente'
+              const isRecentlyUpdated = recentUpdates.includes(alumno.id)
               return (
-                <tr key={alumno.id} className={idx % 2 === 0 ? 'bg-background' : 'bg-muted/50'}>
+                <tr 
+                  key={alumno.id} 
+                  className={`transition-all duration-500 ${
+                    isRecentlyUpdated 
+                      ? 'bg-green-100 ring-2 ring-green-500 ring-inset animate-pulse' 
+                      : idx % 2 === 0 ? 'bg-background' : 'bg-muted/50'
+                  }`}
+                >
                   <td className="px-4 py-3 font-medium">
-                    {alumno.apellido}, {alumno.nombre}
+                    <div className="flex items-center gap-2">
+                      {alumno.apellido}, {alumno.nombre}
+                      {isRecentlyUpdated && (
+                        <Badge className="bg-green-600 text-white text-xs animate-bounce">
+                          QR
+                        </Badge>
+                      )}
+                    </div>
                   </td>
                   <td className="px-4 py-3 text-xs text-muted-foreground">{alumno.dni}</td>
                   <td className="px-4 py-3 text-center">

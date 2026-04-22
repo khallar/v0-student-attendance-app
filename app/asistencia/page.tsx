@@ -22,7 +22,9 @@ import { ArrowLeft, Download, Plus, Save, Trash2, QrCode, Copy, Check, Link2 } f
 import Link from 'next/link'
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
+import { Badge } from '@/components/ui/badge'
 import QRCode from 'react-qr-code'
+import { createClient } from '@/lib/supabase/client'
 
 function AsistenciaPageContent() {
   const router = useRouter()
@@ -45,6 +47,7 @@ function AsistenciaPageContent() {
   const [newClaseHorario, setNewClaseHorario] = useState('')
   const [qrDialogOpen, setQrDialogOpen] = useState(false)
   const [copied, setCopied] = useState(false)
+  const [recentUpdates, setRecentUpdates] = useState<string[]>([]) // Track recently updated alumno IDs for visual feedback
 
   // Load materias on mount
   useEffect(() => {
@@ -65,6 +68,49 @@ function AsistenciaPageContent() {
       loadAsistencias(selectedClase)
     }
   }, [selectedClase, selectedMateria])
+
+  // Subscribe to realtime asistencia updates
+  useEffect(() => {
+    if (!selectedClase) return
+
+    const supabase = createClient()
+    
+    const channel = supabase
+      .channel(`asistencias-${selectedClase}`)
+      .on(
+        'postgres_changes',
+        {
+          event: '*', // Listen to INSERT, UPDATE, DELETE
+          schema: 'public',
+          table: 'asistencias',
+          filter: `clase_id=eq.${selectedClase}`,
+        },
+        (payload) => {
+          if (payload.eventType === 'INSERT' || payload.eventType === 'UPDATE') {
+            const newRecord = payload.new as { alumno_id: string; estado: string }
+            
+            // Update asistencias state
+            setAsistencias((prev) => ({
+              ...prev,
+              [newRecord.alumno_id]: newRecord.estado,
+            }))
+            
+            // Add visual feedback for the updated alumno
+            setRecentUpdates((prev) => [...prev, newRecord.alumno_id])
+            
+            // Remove from recent updates after 3 seconds
+            setTimeout(() => {
+              setRecentUpdates((prev) => prev.filter((id) => id !== newRecord.alumno_id))
+            }, 3000)
+          }
+        }
+      )
+      .subscribe()
+
+    return () => {
+      supabase.removeChannel(channel)
+    }
+  }, [selectedClase])
 
   async function loadMaterias() {
     try {
@@ -406,6 +452,7 @@ function AsistenciaPageContent() {
                   asistencias={asistencias}
                   onAsistenciaChange={handleAsistenciaChange}
                   loading={loading}
+                  recentUpdates={recentUpdates}
                 />
               </div>
             </Card>
