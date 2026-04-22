@@ -76,36 +76,64 @@ function AsistenciaPageContent() {
     const supabase = createClient()
     
     const channel = supabase
-      .channel(`asistencias-${selectedClase}`)
+      .channel(`asistencias-live-${selectedClase}`)
       .on(
         'postgres_changes',
         {
-          event: '*', // Listen to INSERT, UPDATE, DELETE
+          event: 'INSERT',
           schema: 'public',
           table: 'asistencias',
           filter: `clase_id=eq.${selectedClase}`,
         },
         (payload) => {
-          if (payload.eventType === 'INSERT' || payload.eventType === 'UPDATE') {
-            const newRecord = payload.new as { alumno_id: string; estado: string }
-            
-            // Update asistencias state
-            setAsistencias((prev) => ({
-              ...prev,
-              [newRecord.alumno_id]: newRecord.estado,
-            }))
-            
-            // Add visual feedback for the updated alumno
-            setRecentUpdates((prev) => [...prev, newRecord.alumno_id])
-            
-            // Remove from recent updates after 3 seconds
-            setTimeout(() => {
-              setRecentUpdates((prev) => prev.filter((id) => id !== newRecord.alumno_id))
-            }, 3000)
-          }
+          const newRecord = payload.new as { alumno_id: string; estado: string }
+          
+          // Update asistencias state
+          setAsistencias((prev) => ({
+            ...prev,
+            [newRecord.alumno_id]: newRecord.estado,
+          }))
+          
+          // Add visual feedback for the updated alumno
+          setRecentUpdates((prev) => [...prev, newRecord.alumno_id])
+          
+          // Remove from recent updates after 3 seconds
+          setTimeout(() => {
+            setRecentUpdates((prev) => prev.filter((id) => id !== newRecord.alumno_id))
+          }, 3000)
         }
       )
-      .subscribe()
+      .on(
+        'postgres_changes',
+        {
+          event: 'UPDATE',
+          schema: 'public',
+          table: 'asistencias',
+          filter: `clase_id=eq.${selectedClase}`,
+        },
+        (payload) => {
+          const newRecord = payload.new as { alumno_id: string; estado: string }
+          
+          // Update asistencias state
+          setAsistencias((prev) => ({
+            ...prev,
+            [newRecord.alumno_id]: newRecord.estado,
+          }))
+          
+          // Add visual feedback for the updated alumno
+          setRecentUpdates((prev) => [...prev, newRecord.alumno_id])
+          
+          // Remove from recent updates after 3 seconds
+          setTimeout(() => {
+            setRecentUpdates((prev) => prev.filter((id) => id !== newRecord.alumno_id))
+          }, 3000)
+        }
+      )
+      .subscribe((status) => {
+        if (status === 'SUBSCRIBED') {
+          console.log('[v0] Realtime subscribed for clase:', selectedClase)
+        }
+      })
 
     return () => {
       supabase.removeChannel(channel)
