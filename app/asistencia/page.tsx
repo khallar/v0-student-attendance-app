@@ -207,6 +207,7 @@ function AsistenciaPageContent() {
       setLoading(false)
     }
   }
+  }
 
   async function handleCreateClase() {
     if (!selectedMateria || !newClaseHorario) return
