@@ -15,8 +15,7 @@ import {
   upsertAsistencia,
   createClase,
   deleteClase,
-  getClaseById,
-  getClaseWithAlumnos
+  getClaseById
 } from '@/lib/supabase/queries'
 import { formatDateShort } from '@/lib/utils-attendance'
 import { ArrowLeft, Download, Plus, Save, Trash2, QrCode, Copy, Check, Link2 } from 'lucide-react'
@@ -185,28 +184,16 @@ function AsistenciaPageContent() {
 
   async function loadAsistencias(claseId: string) {
     try {
-      setLoading(true)
-      // Use optimized query that combines clase, alumnos, and asistencias
-      const claseData = await getClaseWithAlumnos(claseId)
-      
-      // Rebuild alumnos and asistencias state
-      const alumnosFromClase = claseData.alumnos || []
-      setAlumnos(alumnosFromClase)
-      
-      // Build asistencias map
-      const asistenciasMap: Record<string, string> = {}
-      alumnosFromClase.forEach((alumno: any) => {
-        if (alumno.asistencia?.id) {
-          asistenciasMap[alumno.id] = alumno.asistencia.estado || 'ausente'
-        }
+      const data = await getAsistenciasByClase(claseId)
+      const newAsistencias: Record<string, string> = {}
+      alumnos.forEach((alumno: any) => {
+        const asistencia = data.find((a: any) => a.alumno_id === alumno.id)
+        newAsistencias[alumno.id] = asistencia?.estado || 'ausente'
       })
-      setAsistencias(asistenciasMap)
+      setAsistencias(newAsistencias)
     } catch (error) {
       console.error('Error loading asistencias:', error)
-    } finally {
-      setLoading(false)
     }
-  }
   }
 
   async function handleCreateClase() {
