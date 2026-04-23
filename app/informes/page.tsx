@@ -16,7 +16,9 @@ import {
   getAllAlumnosWithMaterias,
   getInformeByAlumno,
 } from '@/lib/supabase/queries'
-import { AlertCircle, Users, BookOpen, Calendar, TrendingUp, CheckCircle } from 'lucide-react'
+import { AlertCircle, Users, BookOpen, Calendar, TrendingUp, CheckCircle, Download } from 'lucide-react'
+import { Button } from '@/components/ui/button'
+import * as XLSX from 'xlsx'
 
 function formatDateShort(fecha: string) {
   if (!fecha) return ''
@@ -182,6 +184,53 @@ export default function InformesPage() {
 
   const currentMateria = materias.find((m) => m.id === selectedMateria)
 
+  // Export Excel function
+  function exportToExcel() {
+    if (!currentMateria || clases.length === 0 || alumnos.length === 0) return
+
+    // Build header row: Apellido, Nombre, DNI, then each class date
+    const headers = ['Apellido', 'Nombre', 'DNI', ...clases.map((c) => formatDateShort(c.fecha)), '% Asistencia']
+
+    // Build data rows
+    const rows = alumnos.map((alumno) => {
+      const stats = getAsistenciaStats(alumno.id)
+      const row: (string | number)[] = [
+        alumno.apellido,
+        alumno.nombre,
+        alumno.dni,
+      ]
+      // Add estado for each clase
+      clases.forEach((clase) => {
+        const estado = asistenciasMap.get(clase.id)?.get(alumno.id)
+        let estadoText = 'A' // Default ausente
+        if (estado === 'presente') estadoText = 'P'
+        else if (estado === 'justificado') estadoText = 'J'
+        else if (estado === 'tardanza') estadoText = 'T'
+        row.push(estadoText)
+      })
+      row.push(`${stats.porcentajeAsistencia}%`)
+      return row
+    })
+
+    // Create worksheet
+    const ws = XLSX.utils.aoa_to_sheet([headers, ...rows])
+
+    // Set column widths
+    ws['!cols'] = [
+      { wch: 15 }, // Apellido
+      { wch: 15 }, // Nombre
+      { wch: 12 }, // DNI
+      ...clases.map(() => ({ wch: 10 })), // Fechas
+      { wch: 12 }, // % Asistencia
+    ]
+
+    // Create workbook and export
+    const wb = XLSX.utils.book_new()
+    const sheetName = currentMateria.codigo.slice(0, 31) // Excel sheet name max 31 chars
+    XLSX.utils.book_append_sheet(wb, ws, sheetName)
+    XLSX.writeFile(wb, `Asistencia_${currentMateria.codigo}_${new Date().toISOString().split('T')[0]}.xlsx`)
+  }
+
   return (
     <AuthGuard>
       <div className="mx-auto max-w-7xl p-4 sm:p-6 lg:p-8">
@@ -208,18 +257,26 @@ export default function InformesPage() {
           <TabsContent value="por-materia">
             <Card className="mb-6">
               <CardContent className="pt-6">
-                <Select value={selectedMateria} onValueChange={setSelectedMateria}>
-                  <SelectTrigger className="max-w-sm">
-                    <SelectValue placeholder="Selecciona una materia..." />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {materias.map((m) => (
-                      <SelectItem key={m.id} value={m.id}>
-                        {m.nombre} — {m.codigo}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                <div className="flex flex-col sm:flex-row gap-4 items-start sm:items-center justify-between">
+                  <Select value={selectedMateria} onValueChange={setSelectedMateria}>
+                    <SelectTrigger className="max-w-sm">
+                      <SelectValue placeholder="Selecciona una materia..." />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {materias.map((m) => (
+                        <SelectItem key={m.id} value={m.id}>
+                          {m.nombre} — {m.codigo}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  {selectedMateria && clases.length > 0 && alumnos.length > 0 && (
+                    <Button onClick={exportToExcel} variant="outline" className="gap-2">
+                      <Download className="h-4 w-4" />
+                      Descargar Excel
+                    </Button>
+                  )}
+                </div>
               </CardContent>
             </Card>
 
