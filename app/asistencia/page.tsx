@@ -16,11 +16,14 @@ import {
   createClase,
   deleteClase,
   getClaseById,
-  updateClaseComentario
+  updateClaseComentario,
+  activateQR,
+  isQRValid,
+  getQRRemainingTime
 } from '@/lib/supabase/queries'
 import { Textarea } from '@/components/ui/textarea'
 import { formatDateShort } from '@/lib/utils-attendance'
-import { ArrowLeft, Download, Plus, Save, Trash2, QrCode, Copy, Check, Link2 } from 'lucide-react'
+import { ArrowLeft, Download, Plus, Save, Trash2, QrCode, Copy, Check, Link2, Clock, Play } from 'lucide-react'
 import Link from 'next/link'
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
@@ -51,6 +54,8 @@ function AsistenciaPageContent() {
   const [copied, setCopied] = useState(false)
   const [recentUpdates, setRecentUpdates] = useState<string[]>([]) // Track recently updated alumno IDs for visual feedback
   const [comentario, setComentario] = useState('')
+  const [qrRemainingTime, setQrRemainingTime] = useState(0)
+  const [qrActive, setQrActive] = useState(false)
 
   // Load materias on mount
   useEffect(() => {
@@ -198,10 +203,37 @@ function AsistenciaPageContent() {
       })
       setAsistencias(newAsistencias)
       setComentario(claseData?.comentario || '')
+      
+      // Check QR status
+      if (isQRValid(claseData?.qr_activo_desde)) {
+        setQrActive(true)
+        setQrRemainingTime(getQRRemainingTime(claseData.qr_activo_desde))
+      } else {
+        setQrActive(false)
+        setQrRemainingTime(0)
+      }
     } catch (error) {
       console.error('Error loading asistencias:', error)
     }
   }
+
+  // Timer for QR countdown
+  useEffect(() => {
+    if (!qrActive || qrRemainingTime <= 0) return
+    
+    const interval = setInterval(() => {
+      setQrRemainingTime((prev) => {
+        if (prev <= 1) {
+          setQrActive(false)
+          clearInterval(interval)
+          return 0
+        }
+        return prev - 1
+      })
+    }, 1000)
+    
+    return () => clearInterval(interval)
+  }, [qrActive])
 
   async function handleCreateClase() {
     if (!selectedMateria || !newClaseHorario) return
@@ -235,6 +267,17 @@ function AsistenciaPageContent() {
       setTimeout(() => setCopied(false), 2000)
     } catch (error) {
       console.error('Error copying link:', error)
+    }
+  }
+
+  async function handleActivateQR() {
+    if (!selectedClase) return
+    try {
+      await activateQR(selectedClase)
+      setQrActive(true)
+      setQrRemainingTime(5 * 60) // 5 minutes in seconds
+    } catch (error) {
+      console.error('Error activating QR:', error)
     }
   }
 
@@ -427,34 +470,70 @@ function AsistenciaPageContent() {
                         <DialogHeader>
                           <DialogTitle>Autoasistencia para Alumnos</DialogTitle>
                           <DialogDescription>
-                            Los alumnos pueden escanear el QR o usar el link para marcar su presente
+                            Los alumnos tienen 5 minutos para marcar su presente una vez activado el QR
                           </DialogDescription>
                         </DialogHeader>
                         <div className="flex flex-col items-center gap-6 py-6">
-                          <div className="bg-white p-4 rounded-lg">
-                            <QRCode 
-                              value={getAutoasistenciaUrl()} 
-                              size={200}
-                              level="H"
-                            />
-                          </div>
-                          <div className="w-full space-y-2">
-                            <label className="text-sm font-medium">Link de autoasistencia:</label>
-                            <div className="flex gap-2">
-                              <Input 
-                                value={getAutoasistenciaUrl()} 
-                                readOnly 
-                                className="text-xs"
-                              />
-                              <Button 
-                                size="icon" 
-                                variant="outline"
-                                onClick={handleCopyLink}
-                              >
-                                {copied ? <Check className="h-4 w-4 text-green-600" /> : <Copy className="h-4 w-4" />}
-                              </Button>
+                          {/* QR Status indicator */}
+                          {qrActive ? (
+                            <div className={`flex items-center justify-center gap-2 py-2 px-4 rounded-lg w-full ${
+                              qrRemainingTime <= 60 ? 'bg-red-100 text-red-700' : 'bg-green-100 text-green-700'
+                            }`}>
+                              <Clock className="h-5 w-5" />
+                              <span className="font-mono font-bold text-xl">
+                                {Math.floor(qrRemainingTime / 60)}:{(qrRemainingTime % 60).toString().padStart(2, '0')}
+                              </span>
+                              <span className="text-sm">restantes</span>
                             </div>
-                          </div>
+                          ) : (
+                            <div className="bg-orange-100 text-orange-700 py-2 px-4 rounded-lg w-full text-center">
+                              <p className="font-medium">QR inactivo</p>
+                              <p className="text-sm">Presiona el botón para activar</p>
+                            </div>
+                          )}
+                          
+                          {/* Activate button */}
+                          {!qrActive && (
+                            <Button 
+                              onClick={handleActivateQR}
+                              className="w-full bg-green-600 hover:bg-green-700"
+                              size="lg"
+                            >
+                              <Play className="mr-2 h-5 w-5" />
+                              Activar QR (5 minutos)
+                            </Button>
+                          )}
+                          
+                          {/* QR Code - only show when active */}
+                          {qrActive && (
+                            <>
+                              <div className="bg-white p-4 rounded-lg border-4 border-green-500">
+                                <QRCode 
+                                  value={getAutoasistenciaUrl()} 
+                                  size={200}
+                                  level="H"
+                                />
+                              </div>
+                              <div className="w-full space-y-2">
+                                <label className="text-sm font-medium">Link de autoasistencia:</label>
+                                <div className="flex gap-2">
+                                  <Input 
+                                    value={getAutoasistenciaUrl()} 
+                                    readOnly 
+                                    className="text-xs"
+                                  />
+                                  <Button 
+                                    size="icon" 
+                                    variant="outline"
+                                    onClick={handleCopyLink}
+                                  >
+                                    {copied ? <Check className="h-4 w-4 text-green-600" /> : <Copy className="h-4 w-4" />}
+                                  </Button>
+                                </div>
+                              </div>
+                            </>
+                          )}
+                          
                           <div className="text-center text-sm text-muted-foreground">
                             <p><strong>Materia:</strong> {currentMateria?.nombre}</p>
                             <p><strong>Clase:</strong> {formatDateShort(currentClase?.fecha)} {currentClase?.horario ? `- ${currentClase.horario}` : ''}</p>

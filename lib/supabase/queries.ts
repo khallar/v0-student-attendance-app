@@ -528,6 +528,38 @@ export async function getInformeByAlumno(alumnoId: string) {
   return materiasConStats
 }
 
+// Activate QR for a clase (sets qr_activo_desde to NOW)
+export async function activateQR(claseId: string) {
+  const supabase = createClient()
+  const { data, error } = await supabase
+    .from('clases')
+    .update({ qr_activo_desde: new Date().toISOString() })
+    .eq('id', claseId)
+    .select()
+  if (error) throw error
+  return data[0]
+}
+
+// Check if QR is still valid (within 5 minutes of activation)
+export function isQRValid(qr_activo_desde: string | null): boolean {
+  if (!qr_activo_desde) return false
+  const activatedAt = new Date(qr_activo_desde)
+  const now = new Date()
+  const diffMs = now.getTime() - activatedAt.getTime()
+  const diffMinutes = diffMs / (1000 * 60)
+  return diffMinutes <= 5
+}
+
+// Get remaining time for QR in seconds
+export function getQRRemainingTime(qr_activo_desde: string | null): number {
+  if (!qr_activo_desde) return 0
+  const activatedAt = new Date(qr_activo_desde)
+  const now = new Date()
+  const diffMs = now.getTime() - activatedAt.getTime()
+  const remainingMs = (5 * 60 * 1000) - diffMs // 5 minutes in ms
+  return Math.max(0, Math.floor(remainingMs / 1000))
+}
+
 // Check if alumno is enrolled in materia by DNI and return alumno data
 export async function getAlumnoEnrolledByDni(materiaId: string, dni: string) {
   const supabase = createClient()

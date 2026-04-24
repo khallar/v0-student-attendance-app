@@ -6,8 +6,8 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Alert, AlertDescription } from '@/components/ui/alert'
-import { getClaseByCode, getAlumnoEnrolledByDni, upsertAsistencia } from '@/lib/supabase/queries'
-import { CheckCircle, AlertCircle, Loader } from 'lucide-react'
+import { getClaseByCode, getAlumnoEnrolledByDni, upsertAsistencia, isQRValid, getQRRemainingTime } from '@/lib/supabase/queries'
+import { CheckCircle, AlertCircle, Loader, Clock } from 'lucide-react'
 
 type Status = 'initial' | 'loading' | 'success' | 'error'
 
@@ -19,6 +19,8 @@ export default function AutoAsistenciaPage() {
   const [status, setStatus] = useState<Status>('initial')
   const [message, setMessage] = useState('')
   const [loading, setLoading] = useState(true)
+  const [qrExpired, setQrExpired] = useState(false)
+  const [remainingTime, setRemainingTime] = useState(0)
 
   useEffect(() => {
     loadClase()
@@ -28,6 +30,14 @@ export default function AutoAsistenciaPage() {
     try {
       const data = await getClaseByCode(codigo)
       setClase(data)
+      
+      // Check if QR is valid
+      if (!isQRValid(data.qr_activo_desde)) {
+        setQrExpired(true)
+      } else {
+        setRemainingTime(getQRRemainingTime(data.qr_activo_desde))
+      }
+      
       setLoading(false)
     } catch (error) {
       setMessage('Código de autoasistencia inválido')
@@ -35,6 +45,23 @@ export default function AutoAsistenciaPage() {
       setLoading(false)
     }
   }
+
+  // Update remaining time every second
+  useEffect(() => {
+    if (!clase || qrExpired) return
+    
+    const interval = setInterval(() => {
+      const remaining = getQRRemainingTime(clase.qr_activo_desde)
+      setRemainingTime(remaining)
+      
+      if (remaining <= 0) {
+        setQrExpired(true)
+        clearInterval(interval)
+      }
+    }, 1000)
+    
+    return () => clearInterval(interval)
+  }, [clase, qrExpired])
 
   async function handleRegister(e: React.FormEvent) {
     e.preventDefault()
@@ -98,6 +125,36 @@ export default function AutoAsistenciaPage() {
     )
   }
 
+  if (qrExpired) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-orange-50 to-red-100 flex items-center justify-center p-4">
+        <Card className="w-full max-w-md shadow-xl">
+          <CardHeader className="bg-gradient-to-r from-orange-500 to-red-500 text-white rounded-t-lg">
+            <div className="text-center">
+              <Clock className="h-16 w-16 mx-auto mb-4 opacity-80" />
+              <CardTitle className="text-2xl">Tiempo Expirado</CardTitle>
+            </div>
+          </CardHeader>
+          <CardContent className="pt-6 text-center space-y-4">
+            <p className="text-lg text-muted-foreground">
+              El tiempo para registrar asistencia con este QR ha expirado.
+            </p>
+            <Alert className="bg-orange-50 border-orange-200">
+              <AlertCircle className="h-4 w-4 text-orange-600" />
+              <AlertDescription className="text-orange-800">
+                Contacta al bedel para que registre tu asistencia manualmente.
+              </AlertDescription>
+            </Alert>
+            <div className="pt-4 text-sm text-muted-foreground">
+              <p>Materia: <span className="font-medium text-foreground">{clase?.materias?.nombre}</span></p>
+              <p>Clase: {new Date(clase?.fecha).toLocaleDateString('es-AR')}</p>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+    )
+  }
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 flex items-center justify-center p-4">
       <Card className="w-full max-w-md shadow-xl">
@@ -120,6 +177,18 @@ export default function AutoAsistenciaPage() {
           </div>
         </CardHeader>
         <CardContent className="pt-6 space-y-4">
+          {remainingTime > 0 && (
+            <div className={`flex items-center justify-center gap-2 py-2 px-4 rounded-lg ${
+              remainingTime <= 60 ? 'bg-red-100 text-red-700' : 'bg-green-100 text-green-700'
+            }`}>
+              <Clock className="h-5 w-5" />
+              <span className="font-mono font-bold text-lg">
+                {Math.floor(remainingTime / 60)}:{(remainingTime % 60).toString().padStart(2, '0')}
+              </span>
+              <span className="text-sm">restantes</span>
+            </div>
+          )}
+
           {status === 'success' && (
             <Alert className="bg-green-50 border-green-200">
               <CheckCircle className="h-4 w-4 text-green-600" />
