@@ -8,8 +8,8 @@ const _geist = Geist({ subsets: ["latin"] });
 const _geistMono = Geist_Mono({ subsets: ["latin"] });
 
 export const metadata: Metadata = {
-  title: 'UTN Asistencia - Sistema de Gestión',
-  description: 'Sistema de gestión y toma de asistencia para la UTN',
+  title: 'AsistApp - Control de Asistencia',
+  description: 'Sistema de control y gestión de asistencia de alumnos',
   generator: 'v0.app',
   icons: {
     icon: [

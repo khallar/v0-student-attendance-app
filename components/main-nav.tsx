@@ -12,6 +12,7 @@ import {
 } from '@/components/ui/dropdown-menu'
 import { LogOut, Menu } from 'lucide-react'
 import Link from 'next/link'
+import { Logo } from '@/components/logo'
 
 interface NavItem {
   label: string
@@ -46,14 +47,8 @@ export function MainNav() {
     <nav className="sticky top-0 z-50 border-b bg-background">
       <div className="mx-auto max-w-7xl px-4 py-4 sm:px-6 lg:px-8">
         <div className="flex items-center justify-between">
-          <Link href="/dashboard" className="flex items-center gap-2">
-            <div className="rounded-lg bg-blue-600 p-2 text-white font-bold text-xl">
-              UTN
-            </div>
-            <div className="hidden sm:block">
-              <div className="text-sm font-semibold">Asistencia</div>
-              <div className="text-xs text-muted-foreground">Sistema de gestión</div>
-            </div>
+          <Link href="/dashboard">
+            <Logo size="md" />
           </Link>
 
           {/* Desktop Nav */}
