@@ -1,5 +1,5 @@
--- UTN-ASISTENCIA Database Schema
--- Sistema de gestion de asistencia para la UTN
+-- AsistApp Database Schema
+-- Sistema de control de asistencia de alumnos
 
 -- Materias
 CREATE TABLE IF NOT EXISTS materias (

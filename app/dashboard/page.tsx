@@ -50,7 +50,7 @@ export default function DashboardPage() {
           <div className="mb-12">
             <h1 className="text-3xl font-bold text-slate-900">Bienvenido</h1>
             <p className="mt-2 text-lg text-slate-600">
-              Sistema de gestión de asistencia para la UTN
+              Sistema de control de asistencia de alumnos
             </p>
           </div>
 

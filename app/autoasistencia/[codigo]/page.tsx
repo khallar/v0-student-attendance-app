@@ -160,7 +160,7 @@ export default function AutoAsistenciaPage() {
       <Card className="w-full max-w-md shadow-xl">
         <CardHeader className="bg-gradient-to-r from-blue-600 to-indigo-600 text-white rounded-t-lg">
           <div className="text-center">
-            <p className="text-sm text-blue-200 uppercase tracking-wide mb-1">UTN - Autoasistencia</p>
+            <p className="text-sm text-blue-200 uppercase tracking-wide mb-1">AsistApp - Autoasistencia</p>
             <CardTitle className="text-2xl mb-2">{clase?.materias?.nombre}</CardTitle>
             <div className="text-blue-100 space-y-1">
               <p className="text-lg font-medium">
