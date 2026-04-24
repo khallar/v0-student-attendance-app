@@ -46,8 +46,6 @@ export default function MateriasPage() {
     fecha_inicio: '',
     fecha_fin: '',
     dias_dictado: [] as string[],
-    hora_desde: '',
-    hora_hasta: '',
     ubicacion: '',
     horarios_por_dia: {} as Record<string, { desde: string; hasta: string }>,
   })
@@ -83,8 +81,8 @@ export default function MateriasPage() {
           formData.fecha_inicio,
           formData.fecha_fin,
           formData.dias_dictado,
-          formData.hora_desde,
-          formData.hora_hasta,
+          '', // hora_desde deprecated
+          '', // hora_hasta deprecated
           formData.ubicacion,
           formData.horarios_por_dia
         )
@@ -98,8 +96,8 @@ export default function MateriasPage() {
             formData.fecha_inicio,
             formData.fecha_fin,
             formData.dias_dictado,
-            formData.hora_desde,
-            formData.hora_hasta,
+            '', // hora_desde deprecated
+            '', // hora_hasta deprecated
             formData.ubicacion,
             formData.horarios_por_dia
           )
@@ -114,8 +112,8 @@ export default function MateriasPage() {
           formData.fecha_inicio,
           formData.fecha_fin,
           formData.dias_dictado,
-          formData.hora_desde,
-          formData.hora_hasta,
+          '', // hora_desde deprecated
+          '', // hora_hasta deprecated
           formData.ubicacion,
           formData.horarios_por_dia
         )
@@ -129,8 +127,8 @@ export default function MateriasPage() {
             formData.fecha_inicio,
             formData.fecha_fin,
             formData.dias_dictado,
-            formData.hora_desde,
-            formData.hora_hasta,
+            '', // hora_desde deprecated
+            '', // hora_hasta deprecated
             formData.ubicacion,
             formData.horarios_por_dia
           )
@@ -157,8 +155,6 @@ export default function MateriasPage() {
       fecha_inicio: '',
       fecha_fin: '',
       dias_dictado: [],
-      hora_desde: '',
-      hora_hasta: '',
       ubicacion: '',
       horarios_por_dia: {},
     })
@@ -174,8 +170,6 @@ export default function MateriasPage() {
       fecha_inicio: materia.fecha_inicio ? materia.fecha_inicio.split('T')[0] : '',
       fecha_fin: materia.fecha_fin ? materia.fecha_fin.split('T')[0] : '',
       dias_dictado: materia.dias_dictado || [],
-      hora_desde: materia.hora_desde || '',
-      hora_hasta: materia.hora_hasta || '',
       ubicacion: materia.ubicacion || '',
       horarios_por_dia: materia.horarios_por_dia || {},
     })
@@ -211,8 +205,8 @@ export default function MateriasPage() {
       if (isSelected) {
         delete newHorarios[day]
       } else {
-        // Initialize with default hours if available
-        newHorarios[day] = { desde: prev.hora_desde || '', hasta: prev.hora_hasta || '' }
+        // Initialize with empty hours
+        newHorarios[day] = { desde: '', hasta: '' }
       }
       
       return { ...prev, dias_dictado: newDias, horarios_por_dia: newHorarios }
@@ -306,25 +300,6 @@ export default function MateriasPage() {
                         ))}
                       </SelectContent>
                     </Select>
-                  </div>
-
-                  <div className="grid grid-cols-2 gap-2">
-                    <div>
-                      <label className="text-sm font-medium">Hora Desde</label>
-                      <Input
-                        type="time"
-                        value={formData.hora_desde}
-                        onChange={(e) => setFormData({ ...formData, hora_desde: e.target.value })}
-                      />
-                    </div>
-                    <div>
-                      <label className="text-sm font-medium">Hora Hasta</label>
-                      <Input
-                        type="time"
-                        value={formData.hora_hasta}
-                        onChange={(e) => setFormData({ ...formData, hora_hasta: e.target.value })}
-                      />
-                    </div>
                   </div>
 
                   <div>
@@ -440,26 +415,17 @@ export default function MateriasPage() {
                     <TableCell className="text-sm">
                       {materia.dias_dictado && materia.dias_dictado.length > 0 ? (
                         <div className="space-y-1">
-                          {materia.horarios_por_dia ? (
-                            <div className="text-xs space-y-0.5">
-                              {materia.dias_dictado.map((d: string) => {
-                                const day = DAYS_OF_WEEK.find((day) => day.key === d)
-                                const h = materia.horarios_por_dia[d]
-                                return (
-                                  <div key={d}>
-                                    <span className="font-medium">{day?.label.slice(0, 2)}</span>: {h?.desde || '-'} - {h?.hasta || '-'}
-                                  </div>
-                                )
-                              })}
-                            </div>
-                          ) : materia.hora_desde && materia.hora_hasta ? (
-                            <div>
-                              {materia.hora_desde} - {materia.hora_hasta}
-                              <div className="text-xs text-muted-foreground">
-                                {materia.dias_dictado.map((d: string) => DAYS_OF_WEEK.find((day) => day.key === d)?.label.slice(0, 1)).join('/')}
-                              </div>
-                            </div>
-                          ) : null}
+                          <div className="text-xs space-y-0.5">
+                            {materia.dias_dictado.map((d: string) => {
+                              const day = DAYS_OF_WEEK.find((day) => day.key === d)
+                              const h = materia.horarios_por_dia?.[d]
+                              return (
+                                <div key={d}>
+                                  <span className="font-medium">{day?.label.slice(0, 2)}</span>: {h?.desde || '-'} - {h?.hasta || '-'}
+                                </div>
+                              )
+                            })}
+                          </div>
                           {materia.ubicacion && (
                             <div className="text-xs text-muted-foreground flex items-center gap-1">
                               <MapPin className="h-3 w-3" />
