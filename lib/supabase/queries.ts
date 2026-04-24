@@ -184,6 +184,17 @@ export async function deleteClase(claseId: string) {
   if (error) throw error
 }
 
+export async function updateClaseComentario(claseId: string, comentario: string) {
+  const supabase = createClient()
+  const { data, error } = await supabase
+    .from('clases')
+    .update({ comentario })
+    .eq('id', claseId)
+    .select()
+  if (error) throw error
+  return data[0]
+}
+
 // Delete all clases for a materia (used when regenerating schedule)
 export async function deleteClasesByMateria(materiaId: string) {
   const supabase = createClient()

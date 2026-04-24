@@ -15,8 +15,10 @@ import {
   upsertAsistencia,
   createClase,
   deleteClase,
-  getClaseById
+  getClaseById,
+  updateClaseComentario
 } from '@/lib/supabase/queries'
+import { Textarea } from '@/components/ui/textarea'
 import { formatDateShort } from '@/lib/utils-attendance'
 import { ArrowLeft, Download, Plus, Save, Trash2, QrCode, Copy, Check, Link2 } from 'lucide-react'
 import Link from 'next/link'
@@ -48,6 +50,7 @@ function AsistenciaPageContent() {
   const [qrDialogOpen, setQrDialogOpen] = useState(false)
   const [copied, setCopied] = useState(false)
   const [recentUpdates, setRecentUpdates] = useState<string[]>([]) // Track recently updated alumno IDs for visual feedback
+  const [comentario, setComentario] = useState('')
 
   // Load materias on mount
   useEffect(() => {
@@ -184,13 +187,17 @@ function AsistenciaPageContent() {
 
   async function loadAsistencias(claseId: string) {
     try {
-      const data = await getAsistenciasByClase(claseId)
+      const [data, claseData] = await Promise.all([
+        getAsistenciasByClase(claseId),
+        getClaseById(claseId)
+      ])
       const newAsistencias: Record<string, string> = {}
       alumnos.forEach((alumno: any) => {
         const asistencia = data.find((a: any) => a.alumno_id === alumno.id)
         newAsistencias[alumno.id] = asistencia?.estado || 'ausente'
       })
       setAsistencias(newAsistencias)
+      setComentario(claseData?.comentario || '')
     } catch (error) {
       console.error('Error loading asistencias:', error)
     }
@@ -262,6 +269,8 @@ function AsistenciaPageContent() {
       for (const [alumnoId, estado] of Object.entries(asistencias)) {
         await upsertAsistencia(selectedClase, alumnoId, estado)
       }
+      // Save comentario
+      await updateClaseComentario(selectedClase, comentario)
     } catch (error) {
       console.error('Error saving asistencias:', error)
     } finally {
@@ -470,6 +479,19 @@ function AsistenciaPageContent() {
                     </Button>
                   </div>
                 </div>
+              </div>
+            </Card>
+
+            <Card className="mb-6">
+              <div className="p-6">
+                <label className="block text-sm font-medium mb-2">Comentario de la clase</label>
+                <Textarea
+                  value={comentario}
+                  onChange={(e) => setComentario(e.target.value)}
+                  placeholder="Agregar notas o comentarios sobre esta clase..."
+                  rows={3}
+                  className="resize-none"
+                />
               </div>
             </Card>
 
