@@ -25,8 +25,8 @@ export const BEDELES_AUTORIZADOS: Bedel[] = [
   },
   {
     id: 'bedel_003',
-    nombre: 'María García',
-    email: 'mgarcia@universidad.edu.ar',
+    nombre: 'Karim Hallar',
+    email: 'khallar@uarg.unpa.edu.ar',
     rol: 'bedel',
   },
   // Agregar más bedeles aquí:
