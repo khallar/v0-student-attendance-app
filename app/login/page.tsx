@@ -3,7 +3,6 @@
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { loginWithEmail, canLogin } from '@/lib/auth-mock'
-import { getAuthorizedEmails } from '@/config/bedeles'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
@@ -78,13 +77,14 @@ export default function LoginPage() {
               {loading ? 'Iniciando sesión...' : 'Ingresar'}
             </Button>
           </form>
-          <div className="mt-6 p-3 bg-muted rounded-md">
-            <p className="text-xs font-medium mb-2">Emails autorizados:</p>
-            <ul className="text-xs text-muted-foreground space-y-1">
-              {getAuthorizedEmails().map((e) => (
-                <li key={e} className="font-mono">{e}</li>
-              ))}
-            </ul>
+          <div className="mt-6 p-4 bg-gradient-to-r from-blue-50 to-indigo-50 rounded-md border border-blue-200">
+            <p className="text-sm font-medium text-blue-900 mb-3">Acerca de AsistApp</p>
+            <p className="text-xs text-blue-800 leading-relaxed mb-3">
+              AsistApp es un sistema integral de control y gestión de asistencia de alumnos. Diseñado para facilitar la toma de asistencia mediante código QR de autoasistencia, generación automática de reportes y análisis de estadísticas en tiempo real.
+            </p>
+            <p className="text-xs text-blue-700 font-medium">
+              Desarrollado por <span className="font-bold">Karim</span>
+            </p>
           </div>
         </CardContent>
       </Card>
