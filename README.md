@@ -1,4 +1,4 @@
-# UTN-ASISTENCIA - Sistema de Gestión de Asistencia
+# ASISTENCIA - Sistema de Gestión de Asistencia
 
 Aplicación web moderna para la gestión y toma de asistencia de alumnos en materias de la UTN. Diseñada específicamente para las necesidades operativas del bedel, enfocada en velocidad, claridad y facilidad de uso en clase.
 
