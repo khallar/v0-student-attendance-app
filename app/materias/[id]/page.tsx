@@ -403,7 +403,7 @@ export default function MateriaDetailPage() {
             <Card>
               <CardHeader>
                 <CardTitle>Importar alumnos desde CSV</CardTitle>
-                <CardDescription>Formato: nombre, apellido, dni, email (sin encabezado)</CardDescription>
+                <CardDescription>Formato: nombre, apellido, dni, email (sin encabezado). Acepta acentos y caracteres especiales como ñ</CardDescription>
               </CardHeader>
               <CardContent className="space-y-4">
                 <div className="border-2 border-dashed rounded-lg p-8 text-center">

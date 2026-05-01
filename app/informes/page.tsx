@@ -19,6 +19,7 @@ import {
 import { AlertCircle, Users, BookOpen, Calendar, TrendingUp, CheckCircle, Download } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import * as XLSX from 'xlsx'
+import { PieChart, Pie, Cell, Legend, Tooltip, ResponsiveContainer } from 'recharts'
 
 function formatDateShort(fecha: string) {
   if (!fecha) return ''
@@ -177,6 +178,35 @@ export default function InformesPage() {
     return { presente, ausente, justificado, tardanza, total, porcentajeAsistencia }
   }
 
+  // Calculate average presentes per clase and overall attendance breakdown
+  function getGlobalStats() {
+    if (clases.length === 0 || alumnos.length === 0) {
+      return { promedioPresentes: 0, totalPresente: 0, totalAusente: 0, totalJustificado: 0, totalTardanza: 0 }
+    }
+
+    let totalPresente = 0, totalAusente = 0, totalJustificado = 0, totalTardanza = 0
+
+    asistenciasMap.forEach((claseMap) => {
+      claseMap.forEach((estado) => {
+        const s = estado?.toLowerCase()
+        if (s === 'presente') totalPresente++
+        else if (s === 'ausente') totalAusente++
+        else if (s === 'justificado') totalJustificado++
+        else if (s === 'tardanza') totalTardanza++
+      })
+    })
+
+    // Count missing registrations as ausente
+    const totalAsistencias = totalPresente + totalAusente + totalJustificado + totalTardanza
+    const expectedTotal = clases.length * alumnos.length
+    const missingAsistencias = expectedTotal - totalAsistencias
+    totalAusente += missingAsistencias
+
+    const promedioPresentes = clases.length > 0 ? Math.round(totalPresente / clases.length) : 0
+
+    return { promedioPresentes, totalPresente, totalAusente, totalJustificado, totalTardanza }
+  }
+
   // --- Computed for Por Alumno ---
   const totalClasesAlumno = alumnoMaterias.reduce((s, m) => s + m.total, 0)
   const totalPresentesAlumno = alumnoMaterias.reduce((s, m) => s + m.presente + m.justificado, 0)
@@ -304,6 +334,13 @@ export default function InformesPage() {
                   </Card>
                   <Card>
                     <CardContent className="pt-6 text-center">
+                      <CheckCircle className="h-8 w-8 mx-auto mb-2 text-green-600" />
+                      <p className="text-3xl font-bold text-green-600">{getGlobalStats().promedioPresentes}</p>
+                      <p className="text-sm text-muted-foreground">Presentes promedio/clase</p>
+                    </CardContent>
+                  </Card>
+                  <Card>
+                    <CardContent className="pt-6 text-center">
                       <TrendingUp className="h-8 w-8 mx-auto mb-2 text-green-600" />
                       <p className="text-3xl font-bold text-green-600">
                         {alumnos.length > 0
@@ -311,15 +348,6 @@ export default function InformesPage() {
                           : 0}%
                       </p>
                       <p className="text-sm text-muted-foreground">Asistencia promedio</p>
-                    </CardContent>
-                  </Card>
-                  <Card>
-                    <CardContent className="pt-6 text-center">
-                      <AlertCircle className="h-8 w-8 mx-auto mb-2 text-red-600" />
-                      <p className="text-3xl font-bold text-red-600">
-                        {alumnos.filter((a) => getAsistenciaStats(a.id).porcentajeAsistencia < 75).length}
-                      </p>
-                      <p className="text-sm text-muted-foreground">{'En riesgo (<75%)'}</p>
                     </CardContent>
                   </Card>
                 </div>
@@ -430,6 +458,46 @@ export default function InformesPage() {
                     </div>
                   </CardContent>
                 </Card>
+
+                {/* Attendance Distribution Chart */}
+                {clases.length > 0 && alumnos.length > 0 && (
+                  <Card>
+                    <CardHeader>
+                      <CardTitle>Distribución de Asistencia</CardTitle>
+                      <CardDescription>Porcentaje de cada tipo de asistencia en {currentMateria?.nombre}</CardDescription>
+                    </CardHeader>
+                    <CardContent>
+                      <div className="flex justify-center w-full">
+                        <ResponsiveContainer width="100%" height={300}>
+                          <PieChart>
+                            <Pie
+                              data={[
+                                { name: 'Presente', value: getGlobalStats().totalPresente, fill: '#22c55e' },
+                                { name: 'Ausente', value: getGlobalStats().totalAusente, fill: '#ef4444' },
+                                { name: 'Justificado', value: getGlobalStats().totalJustificado, fill: '#eab308' },
+                                { name: 'Tardanza', value: getGlobalStats().totalTardanza, fill: '#f97316' },
+                              ]}
+                              cx="50%"
+                              cy="50%"
+                              labelLine={false}
+                              label={({ name, value, percent }) => `${name}: ${(percent * 100).toFixed(0)}%`}
+                              outerRadius={100}
+                              fill="#8884d8"
+                              dataKey="value"
+                            >
+                              <Cell fill="#22c55e" />
+                              <Cell fill="#ef4444" />
+                              <Cell fill="#eab308" />
+                              <Cell fill="#f97316" />
+                            </Pie>
+                            <Tooltip formatter={(value) => `${value} registros`} />
+                            <Legend />
+                          </PieChart>
+                        </ResponsiveContainer>
+                      </div>
+                    </CardContent>
+                  </Card>
+                )}
               </>
             )}
 
