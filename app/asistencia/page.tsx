@@ -30,6 +30,7 @@ import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
 import QRCode from 'react-qr-code'
 import { createClient } from '@/lib/supabase/client'
+import * as XLSX from 'xlsx'
 
 function AsistenciaPageContent() {
   const router = useRouter()
@@ -339,6 +340,51 @@ function AsistenciaPageContent() {
   const currentClase = clases.find((c: any) => c.id === selectedClase)
   const currentMateria = materias.find((m: any) => m.id === selectedMateria)
 
+  function handleDownloadReport() {
+    if (!currentClase || !currentMateria || alumnos.length === 0) return
+
+    // Build header row
+    const headers = ['Apellido', 'Nombre', 'DNI', 'Email', 'Estado']
+
+    // Build data rows with all alumno data
+    const rows = alumnos.map((alumno: any) => {
+      const estado = asistencias[alumno.id] || 'ausente'
+      let estadoText = 'Ausente'
+      if (estado === 'presente') estadoText = 'Presente'
+      else if (estado === 'justificado') estadoText = 'Justificado'
+      else if (estado === 'tardanza') estadoText = 'Tardanza'
+      
+      return [
+        alumno.apellido,
+        alumno.nombre,
+        alumno.dni,
+        alumno.email || '',
+        estadoText,
+      ]
+    })
+
+    // Create worksheet
+    const ws = XLSX.utils.aoa_to_sheet([headers, ...rows])
+
+    // Set column widths
+    ws['!cols'] = [
+      { wch: 20 }, // Apellido
+      { wch: 20 }, // Nombre
+      { wch: 12 }, // DNI
+      { wch: 30 }, // Email
+      { wch: 12 }, // Estado
+    ]
+
+    // Create workbook and export
+    const wb = XLSX.utils.book_new()
+    const fechaStr = formatDateShort(currentClase.fecha).replace(/\//g, '-')
+    const sheetName = `Asistencia ${fechaStr}`.slice(0, 31) // Excel sheet name max 31 chars
+    XLSX.utils.book_append_sheet(wb, ws, sheetName)
+    
+    const fileName = `Asistencia_${currentMateria.codigo}_${fechaStr}.xlsx`
+    XLSX.writeFile(wb, fileName)
+  }
+
   return (
     <AuthGuard>
       <div className="mx-auto max-w-7xl p-4 sm:p-6 lg:p-8">
@@ -595,7 +641,7 @@ function AsistenciaPageContent() {
                 <Save className="mr-2 h-4 w-4" />
                 {saving ? 'Guardando...' : 'Guardar Asistencias'}
               </Button>
-              <Button variant="outline" size="lg">
+              <Button variant="outline" size="lg" onClick={handleDownloadReport}>
                 <Download className="mr-2 h-4 w-4" />
                 Descargar Reporte
               </Button>
