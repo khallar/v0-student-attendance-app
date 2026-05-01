@@ -46,15 +46,13 @@ function getEstadoBadge(estado: string) {
 }
 
 function getPorcentajeColor(p: number) {
-  if (p >= 75) return 'text-green-600'
-  if (p >= 50) return 'text-yellow-600'
+  if (p >= 60) return 'text-green-600'
   return 'text-red-600'
 }
 
 function getRiskBadge(p: number) {
-  if (p >= 75) return <Badge className="bg-green-100 text-green-800">Regular</Badge>
-  if (p >= 50) return <Badge className="bg-yellow-100 text-yellow-800">Alerta</Badge>
-  return <Badge className="bg-red-100 text-red-800">Riesgo</Badge>
+  if (p >= 60) return <Badge className="bg-green-100 text-green-800 font-semibold">Regular</Badge>
+  return <Badge className="bg-red-100 text-red-800 font-semibold">Libre</Badge>
 }
 
 export default function InformesPage() {
@@ -382,7 +380,7 @@ export default function InformesPage() {
                             {alumnos.map((alumno) => {
                               const stats = getAsistenciaStats(alumno.id)
                               return (
-                                <TableRow key={alumno.id} className={stats.porcentajeAsistencia < 75 ? 'bg-red-50/60' : ''}>
+                                <TableRow key={alumno.id} className={stats.porcentajeAsistencia < 60 ? 'bg-red-50/60' : ''}>
                                   <TableCell className="sticky left-0 bg-background font-medium whitespace-nowrap text-sm">
                                     {alumno.apellido}, {alumno.nombre}
                                   </TableCell>
@@ -412,8 +410,24 @@ export default function InformesPage() {
                 {/* Resumen por Alumno */}
                 <Card>
                   <CardHeader>
-                    <CardTitle>Resumen por Alumno</CardTitle>
-                    <CardDescription>Totales de asistencia en {currentMateria?.nombre}</CardDescription>
+                    <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4">
+                      <div>
+                        <CardTitle>Resumen por Alumno</CardTitle>
+                        <CardDescription>Totales de asistencia en {currentMateria?.nombre}</CardDescription>
+                      </div>
+                      <div className="flex flex-col gap-1.5 text-sm border rounded-lg p-3 bg-muted/50 min-w-56">
+                        <p className="font-semibold text-foreground text-xs uppercase tracking-wide mb-0.5">Criterio de regularidad</p>
+                        <div className="flex items-center gap-2">
+                          <Badge className="bg-green-100 text-green-800 font-semibold">Regular</Badge>
+                          <span className="text-muted-foreground text-xs">60% o mas de asistencia</span>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <Badge className="bg-red-100 text-red-800 font-semibold">Libre</Badge>
+                          <span className="text-muted-foreground text-xs">Menos del 60% de asistencia</span>
+                        </div>
+                        <p className="text-xs text-muted-foreground mt-1">Se computan presentes y justificados</p>
+                      </div>
+                    </div>
                   </CardHeader>
                   <CardContent>
                     <div className="overflow-x-auto">
@@ -434,8 +448,8 @@ export default function InformesPage() {
                           {alumnos.map((alumno) => {
                             const stats = getAsistenciaStats(alumno.id)
                             return (
-                              <TableRow key={alumno.id} className={stats.porcentajeAsistencia < 75 ? 'bg-red-50/60' : ''}>
-                                <TableCell className="font-medium">{alumno.apellido}, {alumno.nombre}</TableCell>
+                                <TableRow key={alumno.id} className={stats.porcentajeAsistencia < 60 ? 'bg-red-50/60' : ''}>
+                                  <TableCell className="font-medium">{alumno.apellido}, {alumno.nombre}</TableCell>
                                 <TableCell className="text-muted-foreground font-mono text-sm">{alumno.dni}</TableCell>
                                 <TableCell className="text-center text-green-700 font-semibold">{stats.presente}</TableCell>
                                 <TableCell className="text-center text-yellow-700 font-semibold">{stats.justificado}</TableCell>
