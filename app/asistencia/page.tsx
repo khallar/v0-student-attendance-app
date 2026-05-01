@@ -23,7 +23,7 @@ import {
 } from '@/lib/supabase/queries'
 import { Textarea } from '@/components/ui/textarea'
 import { formatDateShort } from '@/lib/utils-attendance'
-import { ArrowLeft, Download, Plus, Save, Trash2, QrCode, Copy, Check, Link2, Clock, Play } from 'lucide-react'
+import { ArrowLeft, Download, Plus, Save, Trash2, QrCode, Copy, Check, Link2, Clock, Play, ImageDown } from 'lucide-react'
 import Link from 'next/link'
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
@@ -269,6 +269,48 @@ function AsistenciaPageContent() {
     } catch (error) {
       console.error('Error copying link:', error)
     }
+  }
+
+  function handleDownloadQR() {
+    const svgEl = document.getElementById('qr-code-svg')?.querySelector('svg')
+    if (!svgEl) return
+
+    const svgData = new XMLSerializer().serializeToString(svgEl)
+    const canvas = document.createElement('canvas')
+    const size = 400
+    canvas.width = size
+    canvas.height = size + 60 // extra space for text below
+    const ctx = canvas.getContext('2d')!
+
+    const img = new Image()
+    img.crossOrigin = 'anonymous'
+    const svgBlob = new Blob([svgData], { type: 'image/svg+xml;charset=utf-8' })
+    const url = URL.createObjectURL(svgBlob)
+
+    img.onload = () => {
+      // White background
+      ctx.fillStyle = '#ffffff'
+      ctx.fillRect(0, 0, canvas.width, canvas.height)
+
+      // Draw QR
+      ctx.drawImage(img, 0, 0, size, size)
+      URL.revokeObjectURL(url)
+
+      // Add materia + date text below
+      ctx.fillStyle = '#1e293b'
+      ctx.font = 'bold 16px sans-serif'
+      ctx.textAlign = 'center'
+      ctx.fillText(currentMateria?.nombre || '', size / 2, size + 22)
+      ctx.font = '14px sans-serif'
+      ctx.fillStyle = '#64748b'
+      ctx.fillText(formatDateShort(currentClase?.fecha) + (currentClase?.horario ? ` - ${currentClase.horario}` : ''), size / 2, size + 44)
+
+      const link = document.createElement('a')
+      link.download = `QR_${currentMateria?.codigo}_${formatDateShort(currentClase?.fecha).replace(/\//g, '-')}.png`
+      link.href = canvas.toDataURL('image/png')
+      link.click()
+    }
+    img.src = url
   }
 
   async function handleActivateQR() {
@@ -553,12 +595,22 @@ function AsistenciaPageContent() {
                           {/* QR Code - only show when active */}
                           {qrActive && (
                             <>
-                              <div className="bg-white p-4 rounded-lg border-4 border-green-500">
+                              <div id="qr-code-svg" className="bg-white p-4 rounded-lg border-4 border-green-500">
                                 <QRCode 
                                   value={getAutoasistenciaUrl()} 
                                   size={200}
                                   level="H"
                                 />
+                              </div>
+                              <div className="flex gap-2 w-full">
+                                <Button
+                                  variant="outline"
+                                  className="flex-1 gap-2"
+                                  onClick={handleDownloadQR}
+                                >
+                                  <ImageDown className="h-4 w-4" />
+                                  Descargar QR
+                                </Button>
                               </div>
                               <div className="w-full space-y-2">
                                 <label className="text-sm font-medium">Link de autoasistencia:</label>
