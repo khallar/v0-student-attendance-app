@@ -15,8 +15,9 @@ import {
   getAsistenciasByClase,
   getAllAlumnosWithMaterias,
   getInformeByAlumno,
+  getCategorias,
 } from '@/lib/supabase/queries'
-import { AlertCircle, Users, BookOpen, Calendar, TrendingUp, CheckCircle, Download } from 'lucide-react'
+import { AlertCircle, Users, BookOpen, Calendar, TrendingUp, CheckCircle, Download, Folder } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import * as XLSX from 'xlsx'
 import { PieChart, Pie, Cell, Legend, Tooltip, ResponsiveContainer } from 'recharts'
@@ -58,6 +59,8 @@ function getRiskBadge(p: number) {
 export default function InformesPage() {
   // --- Tab Por Materia ---
   const [materias, setMaterias] = useState<any[]>([])
+  const [categorias, setCategorias] = useState<any[]>([])
+  const [selectedCategoria, setSelectedCategoria] = useState<string>('todas')
   const [selectedMateria, setSelectedMateria] = useState<string>('')
   const [clases, setClases] = useState<any[]>([])
   const [alumnos, setAlumnos] = useState<any[]>([])
@@ -78,12 +81,23 @@ export default function InformesPage() {
 
   async function loadInit() {
     try {
-      const data = await getMaterias()
-      setMaterias(data)
+      const [materiasData, categoriasData] = await Promise.all([
+        getMaterias(),
+        getCategorias()
+      ])
+      setMaterias(materiasData)
+      setCategorias(categoriasData)
     } catch (error) {
-      console.error('Error loading materias:', error)
+      console.error('Error loading data:', error)
     }
   }
+
+  // Filter materias by selected categoria
+  const filteredMaterias = selectedCategoria === 'todas' 
+    ? materias 
+    : selectedCategoria === 'sin-categoria'
+    ? materias.filter(m => !m.categoria_id)
+    : materias.filter(m => m.categoria_id === selectedCategoria)
 
   // Load alumnos list when Por Alumno tab is first opened
   async function loadAlumnosList() {
@@ -285,15 +299,56 @@ export default function InformesPage() {
           <TabsContent value="por-materia">
             <Card className="mb-6">
               <CardContent className="pt-6">
+                {/* Categoria filter */}
+                {categorias.length > 0 && (
+                  <div className="mb-4 pb-4 border-b">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <Folder className="h-4 w-4 text-muted-foreground" />
+                      <span className="text-sm font-medium text-muted-foreground mr-1">Categoria:</span>
+                      <Badge
+                        variant={selectedCategoria === 'todas' ? 'default' : 'outline'}
+                        className="cursor-pointer"
+                        onClick={() => setSelectedCategoria('todas')}
+                      >
+                        Todas
+                      </Badge>
+                      {categorias.map((cat) => (
+                        <Badge
+                          key={cat.id}
+                          variant={selectedCategoria === cat.id ? 'default' : 'outline'}
+                          className="cursor-pointer"
+                          style={selectedCategoria === cat.id ? { backgroundColor: cat.color } : {}}
+                          onClick={() => setSelectedCategoria(cat.id)}
+                        >
+                          <div className="w-2 h-2 rounded-full mr-1.5" style={{ backgroundColor: selectedCategoria === cat.id ? '#fff' : cat.color }} />
+                          {cat.nombre}
+                        </Badge>
+                      ))}
+                      <Badge
+                        variant={selectedCategoria === 'sin-categoria' ? 'default' : 'outline'}
+                        className="cursor-pointer"
+                        onClick={() => setSelectedCategoria('sin-categoria')}
+                      >
+                        Sin categoria
+                      </Badge>
+                    </div>
+                  </div>
+                )}
+
                 <div className="flex flex-col sm:flex-row gap-4 items-start sm:items-center justify-between">
                   <Select value={selectedMateria} onValueChange={setSelectedMateria}>
                     <SelectTrigger className="max-w-sm">
                       <SelectValue placeholder="Selecciona una materia..." />
                     </SelectTrigger>
                     <SelectContent>
-                      {materias.map((m) => (
+                      {filteredMaterias.map((m) => (
                         <SelectItem key={m.id} value={m.id}>
-                          {m.nombre} — {m.codigo}
+                          <div className="flex items-center gap-2">
+                            {m.categorias && (
+                              <div className="w-2 h-2 rounded-full" style={{ backgroundColor: m.categorias.color }} />
+                            )}
+                            {m.nombre} — {m.codigo}
+                          </div>
                         </SelectItem>
                       ))}
                     </SelectContent>
