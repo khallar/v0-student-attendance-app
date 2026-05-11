@@ -1,11 +1,49 @@
 import { createClient } from './client'
 
+// Categorias
+export async function getCategorias() {
+  const supabase = createClient()
+  const { data, error } = await supabase
+    .from('categorias')
+    .select('*')
+    .order('nombre', { ascending: true })
+  if (error) throw error
+  return data
+}
+
+export async function createCategoria(nombre: string, descripcion: string = '', color: string = '#3b82f6') {
+  const supabase = createClient()
+  const { data, error } = await supabase
+    .from('categorias')
+    .insert([{ nombre, descripcion, color }])
+    .select()
+  if (error) throw error
+  return data[0]
+}
+
+export async function updateCategoria(id: string, nombre: string, descripcion: string = '', color: string = '#3b82f6') {
+  const supabase = createClient()
+  const { data, error } = await supabase
+    .from('categorias')
+    .update({ nombre, descripcion, color })
+    .eq('id', id)
+    .select()
+  if (error) throw error
+  return data[0]
+}
+
+export async function deleteCategoria(id: string) {
+  const supabase = createClient()
+  const { error } = await supabase.from('categorias').delete().eq('id', id)
+  if (error) throw error
+}
+
 // Materias
 export async function getMaterias() {
   const supabase = createClient()
   const { data, error } = await supabase
     .from('materias')
-    .select('*')
+    .select('*, categorias(id, nombre, color)')
     .order('nombre', { ascending: true })
   if (error) throw error
   return data
@@ -22,7 +60,8 @@ export async function createMateria(
   hora_desde: string = '',
   hora_hasta: string = '',
   ubicacion: string = '',
-  horarios_por_dia: Record<string, { desde: string; hasta: string }> = {}
+  horarios_por_dia: Record<string, { desde: string; hasta: string }> = {},
+  categoria_id: string = ''
 ) {
   const supabase = createClient()
   const { data, error } = await supabase
@@ -38,9 +77,10 @@ export async function createMateria(
       hora_desde: hora_desde || null,
       hora_hasta: hora_hasta || null,
       ubicacion: ubicacion || null,
-      horarios_por_dia: Object.keys(horarios_por_dia).length > 0 ? horarios_por_dia : null
+      horarios_por_dia: Object.keys(horarios_por_dia).length > 0 ? horarios_por_dia : null,
+      categoria_id: categoria_id || null
     }])
-    .select()
+    .select('*, categorias(id, nombre, color)')
   if (error) throw error
   return data[0]
 }
@@ -57,7 +97,8 @@ export async function updateMateria(
   hora_desde: string = '',
   hora_hasta: string = '',
   ubicacion: string = '',
-  horarios_por_dia: Record<string, { desde: string; hasta: string }> = {}
+  horarios_por_dia: Record<string, { desde: string; hasta: string }> = {},
+  categoria_id: string = ''
 ) {
   const supabase = createClient()
   const { data, error } = await supabase
@@ -73,10 +114,11 @@ export async function updateMateria(
       hora_desde: hora_desde || null,
       hora_hasta: hora_hasta || null,
       ubicacion: ubicacion || null,
-      horarios_por_dia: Object.keys(horarios_por_dia).length > 0 ? horarios_por_dia : null
+      horarios_por_dia: Object.keys(horarios_por_dia).length > 0 ? horarios_por_dia : null,
+      categoria_id: categoria_id || null
     })
     .eq('id', id)
-    .select()
+    .select('*, categorias(id, nombre, color)')
   if (error) throw error
   return data[0]
 }
