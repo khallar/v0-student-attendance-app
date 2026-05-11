@@ -10,7 +10,8 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { getAlumnosByMateria, createAlumno, addAlumnoToMateria, removeAlumnoFromMateria, getMaterias, findOrCreateAlumno, isAlumnoInMateria } from '@/lib/supabase/queries'
-import { Upload, Plus, Trash2, AlertCircle, BookOpen } from 'lucide-react'
+import { Upload, Plus, Trash2, AlertCircle, BookOpen, FileSpreadsheet, FileText } from 'lucide-react'
+import * as XLSX from 'xlsx'
 import { Badge } from '@/components/ui/badge'
 
 export default function MateriaDetailPage() {
@@ -118,59 +119,115 @@ export default function MateriaDetailPage() {
     }
   }
 
-  function handleCSVUpload(e: React.ChangeEvent<HTMLInputElement>) {
+  function parseRows(rows: string[][]): { data: any[], errors: string[] } {
+    const errors: string[] = []
+    const data: any[] = []
+    const enrolledDnis = new Set(alumnos.map((a: any) => a.dni))
+    const seenDnis = new Set<string>()
+
+    rows.forEach((row, index) => {
+      // Skip empty rows or header row
+      if (row.length === 0 || row.every(cell => !cell?.trim())) return
+      
+      // Check if it looks like a header row (first row with text like "nombre", "apellido", etc.)
+      if (index === 0) {
+        const firstCell = row[0]?.toLowerCase().trim()
+        if (firstCell === 'nombre' || firstCell === 'apellido' || firstCell === 'dni' || firstCell === 'email') {
+          return // Skip header
+        }
+      }
+
+      const [nombre, apellido, dni, email] = row.map((s) => s?.trim() || '')
+
+      if (!nombre || !apellido || !dni || !email) {
+        errors.push(`Fila ${index + 1}: Datos incompletos (se requiere nombre, apellido, dni, email)`)
+        return
+      }
+
+      // Clean DNI - remove dots and spaces
+      const cleanDni = dni.replace(/\./g, '').replace(/\s/g, '')
+
+      // Check if already enrolled in this materia
+      if (enrolledDnis.has(cleanDni)) {
+        errors.push(`Fila ${index + 1}: DNI ${cleanDni} ya inscripto en esta materia`)
+        return
+      }
+
+      // Check for duplicates within the file itself
+      if (seenDnis.has(cleanDni)) {
+        errors.push(`Fila ${index + 1}: DNI ${cleanDni} duplicado en el archivo`)
+        return
+      }
+      seenDnis.add(cleanDni)
+
+      if (!/^[0-9]{7,8}$/.test(cleanDni)) {
+        errors.push(`Fila ${index + 1}: DNI ${cleanDni} inválido (debe tener 7 u 8 dígitos)`)
+        return
+      }
+
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+        errors.push(`Fila ${index + 1}: Email ${email} inválido`)
+        return
+      }
+
+      data.push({ nombre, apellido, dni: cleanDni, email })
+    })
+
+    return { data, errors }
+  }
+
+  function handleFileUpload(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0]
     if (!file) return
 
-    const reader = new FileReader()
-    reader.onload = (event) => {
-      const csv = event.target?.result as string
-      const lines = csv.trim().split('\n')
-      const errors: string[] = []
-      const data: any[] = []
-      const enrolledDnis = new Set(alumnos.map((a: any) => a.dni))
-      const seenDnis = new Set<string>()
+    const fileName = file.name.toLowerCase()
+    const isExcel = fileName.endsWith('.xlsx') || fileName.endsWith('.xls')
 
-      lines.forEach((line, index) => {
-        if (index === 0) return // Skip header
-        const [nombre, apellido, dni, email] = line.split(',').map((s) => s.trim())
-
-        if (!nombre || !apellido || !dni || !email) {
-          errors.push(`Fila ${index + 1}: Datos incompletos`)
-          return
+    if (isExcel) {
+      // Handle Excel file
+      const reader = new FileReader()
+      reader.onload = (event) => {
+        try {
+          const data = new Uint8Array(event.target?.result as ArrayBuffer)
+          const workbook = XLSX.read(data, { type: 'array' })
+          const firstSheet = workbook.Sheets[workbook.SheetNames[0]]
+          const rows: string[][] = XLSX.utils.sheet_to_json(firstSheet, { header: 1 })
+          
+          const result = parseRows(rows)
+          setCsvData(result.data)
+          setCsvErrors(result.errors)
+          setCsvPreview(true)
+        } catch (error) {
+          setCsvErrors(['Error al leer el archivo Excel. Verifica que el formato sea correcto.'])
+          setCsvPreview(true)
         }
-
-        // Check if already enrolled in this materia
-        if (enrolledDnis.has(dni)) {
-          errors.push(`Fila ${index + 1}: DNI ${dni} ya inscripto en esta materia`)
-          return
-        }
-
-        // Check for duplicates within the CSV itself
-        if (seenDnis.has(dni)) {
-          errors.push(`Fila ${index + 1}: DNI ${dni} duplicado en el archivo`)
-          return
-        }
-        seenDnis.add(dni)
-
-        if (!/^[0-9]{7,8}$/.test(dni)) {
-          errors.push(`Fila ${index + 1}: DNI ${dni} inválido`)
-          return
-        }
-
-        if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
-          errors.push(`Fila ${index + 1}: Email ${email} inválido`)
-          return
-        }
-
-        data.push({ nombre, apellido, dni, email })
-      })
-
-      setCsvData(data)
-      setCsvErrors(errors)
-      setCsvPreview(true)
+      }
+      reader.readAsArrayBuffer(file)
+    } else {
+      // Handle CSV/TXT file
+      const reader = new FileReader()
+      reader.onload = (event) => {
+        const content = event.target?.result as string
+        const lines = content.trim().split('\n')
+        
+        // Detect separator (semicolon or comma)
+        const firstDataLine = lines.find(line => line.trim().length > 0) || ''
+        const semicolonCount = (firstDataLine.match(/;/g) || []).length
+        const commaCount = (firstDataLine.match(/,/g) || []).length
+        const separator = semicolonCount >= 3 ? ';' : ','
+        
+        const rows = lines.map(line => line.split(separator))
+        
+        const result = parseRows(rows)
+        setCsvData(result.data)
+        setCsvErrors(result.errors)
+        setCsvPreview(true)
+      }
+      reader.readAsText(file)
     }
-    reader.readAsText(file)
+    
+    // Reset file input
+    e.target.value = ''
   }
 
   async function handleImportCSV() {
@@ -402,22 +459,61 @@ export default function MateriaDetailPage() {
           <TabsContent value="importar">
             <Card>
               <CardHeader>
-                <CardTitle>Importar alumnos desde CSV</CardTitle>
-                <CardDescription>Formato: nombre, apellido, dni, email (sin encabezado). Acepta acentos y caracteres especiales como ñ</CardDescription>
+                <CardTitle>Importar alumnos</CardTitle>
+                <CardDescription>Importa una lista de alumnos desde un archivo</CardDescription>
               </CardHeader>
               <CardContent className="space-y-4">
-                <div className="border-2 border-dashed rounded-lg p-8 text-center">
+                {/* Format instructions */}
+                <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 space-y-3">
+                  <p className="font-medium text-blue-900 flex items-center gap-2">
+                    <FileSpreadsheet className="h-5 w-5" />
+                    Formatos aceptados
+                  </p>
+                  <div className="grid sm:grid-cols-2 gap-4 text-sm">
+                    <div className="space-y-1">
+                      <p className="font-medium text-blue-800 flex items-center gap-1.5">
+                        <FileSpreadsheet className="h-4 w-4" /> Excel (.xlsx, .xls)
+                      </p>
+                      <p className="text-blue-700 text-xs">Primera hoja con columnas en orden</p>
+                    </div>
+                    <div className="space-y-1">
+                      <p className="font-medium text-blue-800 flex items-center gap-1.5">
+                        <FileText className="h-4 w-4" /> CSV/Texto (.csv, .txt)
+                      </p>
+                      <p className="text-blue-700 text-xs">Separado por coma (,) o punto y coma (;)</p>
+                    </div>
+                  </div>
+                  <div className="border-t border-blue-200 pt-3 mt-2">
+                    <p className="font-medium text-blue-900 text-sm mb-2">Columnas requeridas (en este orden):</p>
+                    <div className="flex flex-wrap gap-2">
+                      <Badge variant="secondary" className="bg-blue-100 text-blue-800">1. Nombre</Badge>
+                      <Badge variant="secondary" className="bg-blue-100 text-blue-800">2. Apellido</Badge>
+                      <Badge variant="secondary" className="bg-blue-100 text-blue-800">3. DNI</Badge>
+                      <Badge variant="secondary" className="bg-blue-100 text-blue-800">4. Email</Badge>
+                    </div>
+                    <p className="text-xs text-blue-600 mt-2">La primera fila puede ser encabezado (se detecta automaticamente). Acepta acentos y caracteres especiales como n.</p>
+                  </div>
+                  <div className="border-t border-blue-200 pt-3">
+                    <p className="font-medium text-blue-900 text-xs mb-1">Ejemplo CSV:</p>
+                    <code className="text-xs bg-blue-100 px-2 py-1 rounded block overflow-x-auto">
+                      Juan,Pérez,12345678,juan@email.com<br/>
+                      María,García,87654321,maria@email.com
+                    </code>
+                  </div>
+                </div>
+
+                <div className="border-2 border-dashed rounded-lg p-8 text-center hover:border-primary/50 hover:bg-muted/50 transition-colors">
                   <input
                     type="file"
-                    accept=".csv"
-                    onChange={handleCSVUpload}
+                    accept=".csv,.txt,.xlsx,.xls"
+                    onChange={handleFileUpload}
                     className="hidden"
-                    id="csv-upload"
+                    id="file-upload"
                   />
-                  <label htmlFor="csv-upload" className="cursor-pointer">
-                    <Upload className="mx-auto h-8 w-8 text-muted-foreground mb-2" />
-                    <p className="text-sm font-medium">Selecciona un archivo CSV</p>
-                    <p className="text-xs text-muted-foreground">o arrastra uno aquí</p>
+                  <label htmlFor="file-upload" className="cursor-pointer">
+                    <Upload className="mx-auto h-10 w-10 text-muted-foreground mb-3" />
+                    <p className="text-sm font-medium">Selecciona un archivo</p>
+                    <p className="text-xs text-muted-foreground mt-1">CSV, TXT o Excel (.xlsx, .xls)</p>
                   </label>
                 </div>
 
