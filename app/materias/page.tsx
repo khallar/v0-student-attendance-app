@@ -9,8 +9,9 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Checkbox } from '@/components/ui/checkbox'
-import { getMaterias, createMateria, updateMateria, deleteMateria, generateClasesForMateria, regenerateClasesForMateria } from '@/lib/supabase/queries'
-import { Pencil, Trash2, Plus, Users, MapPin } from 'lucide-react'
+import { getMaterias, createMateria, updateMateria, deleteMateria, generateClasesForMateria, regenerateClasesForMateria, getCategorias, createCategoria, deleteCategoria } from '@/lib/supabase/queries'
+import { Pencil, Trash2, Plus, Users, MapPin, FolderPlus, Folder, X } from 'lucide-react'
+import { Badge } from '@/components/ui/badge'
 import Link from 'next/link'
 
 const DAYS_OF_WEEK = [
@@ -34,10 +35,15 @@ const REPETICION_OPTIONS = [
 
 export default function MateriasPage() {
   const [materias, setMaterias] = useState<any[]>([])
+  const [categorias, setCategorias] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [dialogOpen, setDialogOpen] = useState(false)
+  const [categoriaDialogOpen, setCategoriaDialogOpen] = useState(false)
   const [editingId, setEditingId] = useState<string | null>(null)
+  const [selectedCategoria, setSelectedCategoria] = useState<string>('todas')
+  const [newCategoriaNombre, setNewCategoriaNombre] = useState('')
+  const [newCategoriaColor, setNewCategoriaColor] = useState('#3b82f6')
   const [formData, setFormData] = useState({
     nombre: '',
     codigo: '',
@@ -48,23 +54,60 @@ export default function MateriasPage() {
     dias_dictado: [] as string[],
     ubicacion: '',
     horarios_por_dia: {} as Record<string, { desde: string; hasta: string }>,
+    categoria_id: '',
   })
 
   useEffect(() => {
-    loadMaterias()
+    loadData()
   }, [])
 
-  async function loadMaterias() {
+  async function loadData() {
     try {
       setLoading(true)
-      const data = await getMaterias()
-      setMaterias(data)
+      const [materiasData, categoriasData] = await Promise.all([
+        getMaterias(),
+        getCategorias()
+      ])
+      setMaterias(materiasData)
+      setCategorias(categoriasData)
     } catch (error) {
-      console.error('Error loading materias:', error)
+      console.error('Error loading data:', error)
     } finally {
       setLoading(false)
     }
   }
+
+  async function handleCreateCategoria() {
+    if (!newCategoriaNombre.trim()) return
+    try {
+      await createCategoria(newCategoriaNombre.trim(), '', newCategoriaColor)
+      setNewCategoriaNombre('')
+      setNewCategoriaColor('#3b82f6')
+      setCategoriaDialogOpen(false)
+      await loadData()
+    } catch (error) {
+      console.error('Error creating categoria:', error)
+    }
+  }
+
+  async function handleDeleteCategoria(id: string) {
+    if (confirm('¿Eliminar esta categoría? Las materias quedarán sin categoría.')) {
+      try {
+        await deleteCategoria(id)
+        if (selectedCategoria === id) setSelectedCategoria('todas')
+        await loadData()
+      } catch (error) {
+        console.error('Error deleting categoria:', error)
+      }
+    }
+  }
+
+  // Filter materias by selected categoria
+  const filteredMaterias = selectedCategoria === 'todas' 
+    ? materias 
+    : selectedCategoria === 'sin-categoria'
+    ? materias.filter(m => !m.categoria_id)
+    : materias.filter(m => m.categoria_id === selectedCategoria)
 
   async function handleSave() {
     try {
@@ -84,7 +127,8 @@ export default function MateriasPage() {
           '', // hora_desde deprecated
           '', // hora_hasta deprecated
           formData.ubicacion,
-          formData.horarios_por_dia
+          formData.horarios_por_dia,
+          formData.categoria_id
         )
         materiaId = materia.id
         
@@ -115,7 +159,8 @@ export default function MateriasPage() {
           '', // hora_desde deprecated
           '', // hora_hasta deprecated
           formData.ubicacion,
-          formData.horarios_por_dia
+          formData.horarios_por_dia,
+          formData.categoria_id
         )
         materiaId = materia.id
         
@@ -137,7 +182,7 @@ export default function MateriasPage() {
       }
       resetForm()
       setDialogOpen(false)
-      await loadMaterias()
+      await loadData()
     } catch (error) {
       console.error('Error saving materia:', error)
       alert('Error al guardar la materia')
@@ -157,6 +202,7 @@ export default function MateriasPage() {
       dias_dictado: [],
       ubicacion: '',
       horarios_por_dia: {},
+      categoria_id: '',
     })
     setEditingId(null)
   }
@@ -172,6 +218,7 @@ export default function MateriasPage() {
       dias_dictado: materia.dias_dictado || [],
       ubicacion: materia.ubicacion || '',
       horarios_por_dia: materia.horarios_por_dia || {},
+      categoria_id: materia.categoria_id || '',
     })
     setEditingId(materia.id)
     setDialogOpen(true)
@@ -181,7 +228,7 @@ export default function MateriasPage() {
     if (confirm('¿Estás seguro de que deseas eliminar esta materia?')) {
       try {
         await deleteMateria(id)
-        await loadMaterias()
+        await loadData()
       } catch (error) {
         console.error('Error deleting materia:', error)
       }
@@ -226,12 +273,55 @@ export default function MateriasPage() {
   return (
     <AuthGuard>
       <div className="mx-auto max-w-6xl p-4 sm:p-6 lg:p-8">
-        <div className="mb-8 flex items-center justify-between">
+        <div className="mb-6 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <div>
             <h1 className="text-3xl font-bold">Materias</h1>
             <p className="text-muted-foreground">Gestiona las materias y programa sus horarios</p>
           </div>
-          <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
+          <div className="flex gap-2">
+            <Dialog open={categoriaDialogOpen} onOpenChange={setCategoriaDialogOpen}>
+              <DialogTrigger asChild>
+                <Button variant="outline">
+                  <FolderPlus className="mr-2 h-4 w-4" />
+                  Nueva categoría
+                </Button>
+              </DialogTrigger>
+              <DialogContent>
+                <DialogHeader>
+                  <DialogTitle>Nueva categoría</DialogTitle>
+                  <DialogDescription>Crea una categoría para organizar tus materias</DialogDescription>
+                </DialogHeader>
+                <div className="space-y-4 py-4">
+                  <div>
+                    <label className="text-sm font-medium">Nombre</label>
+                    <Input
+                      value={newCategoriaNombre}
+                      onChange={(e) => setNewCategoriaNombre(e.target.value)}
+                      placeholder="Ej: Primer Año, Electivas, etc."
+                    />
+                  </div>
+                  <div>
+                    <label className="text-sm font-medium">Color</label>
+                    <div className="flex gap-2 mt-2">
+                      {['#3b82f6', '#22c55e', '#ef4444', '#f59e0b', '#8b5cf6', '#ec4899', '#06b6d4', '#64748b'].map((color) => (
+                        <button
+                          key={color}
+                          type="button"
+                          className={`w-8 h-8 rounded-full border-2 ${newCategoriaColor === color ? 'border-foreground' : 'border-transparent'}`}
+                          style={{ backgroundColor: color }}
+                          onClick={() => setNewCategoriaColor(color)}
+                        />
+                      ))}
+                    </div>
+                  </div>
+                  <div className="flex justify-end gap-2 pt-4">
+                    <Button variant="outline" onClick={() => setCategoriaDialogOpen(false)}>Cancelar</Button>
+                    <Button onClick={handleCreateCategoria} disabled={!newCategoriaNombre.trim()}>Crear</Button>
+                  </div>
+                </div>
+              </DialogContent>
+            </Dialog>
+            <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
             <DialogTrigger asChild>
               <Button onClick={handleNewMateria}>
                 <Plus className="mr-2 h-4 w-4" />
@@ -280,6 +370,28 @@ export default function MateriasPage() {
                       onChange={(e) => setFormData({ ...formData, ubicacion: e.target.value })}
                       placeholder="Ej: Aula 101, Edificio A"
                     />
+                  </div>
+                  <div>
+                    <label className="text-sm font-medium">Categoría</label>
+                    <Select 
+                      value={formData.categoria_id || 'none'} 
+                      onValueChange={(value) => setFormData({ ...formData, categoria_id: value === 'none' ? '' : value })}
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="Sin categoría" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="none">Sin categoría</SelectItem>
+                        {categorias.map((cat) => (
+                          <SelectItem key={cat.id} value={cat.id}>
+                            <div className="flex items-center gap-2">
+                              <div className="w-3 h-3 rounded-full" style={{ backgroundColor: cat.color }} />
+                              {cat.nombre}
+                            </div>
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
                   </div>
                 </div>
 
@@ -378,7 +490,54 @@ export default function MateriasPage() {
               </div>
             </DialogContent>
           </Dialog>
+          </div>
         </div>
+
+        {/* Categoria filter */}
+        {categorias.length > 0 && (
+          <div className="mb-6">
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="text-sm font-medium text-muted-foreground mr-2">Filtrar por categoría:</span>
+              <Badge
+                variant={selectedCategoria === 'todas' ? 'default' : 'outline'}
+                className="cursor-pointer"
+                onClick={() => setSelectedCategoria('todas')}
+              >
+                Todas ({materias.length})
+              </Badge>
+              {categorias.map((cat) => {
+                const count = materias.filter(m => m.categoria_id === cat.id).length
+                return (
+                  <div key={cat.id} className="flex items-center">
+                    <Badge
+                      variant={selectedCategoria === cat.id ? 'default' : 'outline'}
+                      className="cursor-pointer flex items-center gap-1.5"
+                      style={selectedCategoria === cat.id ? { backgroundColor: cat.color } : {}}
+                      onClick={() => setSelectedCategoria(cat.id)}
+                    >
+                      <div className="w-2 h-2 rounded-full" style={{ backgroundColor: selectedCategoria === cat.id ? '#fff' : cat.color }} />
+                      {cat.nombre} ({count})
+                    </Badge>
+                    <button
+                      className="ml-1 text-muted-foreground hover:text-red-600 transition-colors"
+                      onClick={(e) => { e.stopPropagation(); handleDeleteCategoria(cat.id) }}
+                      title="Eliminar categoría"
+                    >
+                      <X className="h-3 w-3" />
+                    </button>
+                  </div>
+                )
+              })}
+              <Badge
+                variant={selectedCategoria === 'sin-categoria' ? 'default' : 'outline'}
+                className="cursor-pointer"
+                onClick={() => setSelectedCategoria('sin-categoria')}
+              >
+                Sin categoría ({materias.filter(m => !m.categoria_id).length})
+              </Badge>
+            </div>
+          </div>
+        )}
 
         {loading ? (
           <div className="flex justify-center py-8">
@@ -400,6 +559,7 @@ export default function MateriasPage() {
               <TableHeader>
                 <TableRow>
                   <TableHead>Nombre</TableHead>
+                  <TableHead>Categoría</TableHead>
                   <TableHead>Código</TableHead>
                   <TableHead>Profesor</TableHead>
                   <TableHead>Horario / Ubicacion</TableHead>
@@ -407,9 +567,23 @@ export default function MateriasPage() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {materias.map((materia) => (
+                {filteredMaterias.map((materia) => (
                   <TableRow key={materia.id}>
                     <TableCell className="font-medium">{materia.nombre}</TableCell>
+                    <TableCell>
+                      {materia.categorias ? (
+                        <Badge 
+                          variant="outline" 
+                          className="text-xs"
+                          style={{ borderColor: materia.categorias.color, color: materia.categorias.color }}
+                        >
+                          <Folder className="h-3 w-3 mr-1" style={{ fill: materia.categorias.color }} />
+                          {materia.categorias.nombre}
+                        </Badge>
+                      ) : (
+                        <span className="text-muted-foreground text-xs">-</span>
+                      )}
+                    </TableCell>
                     <TableCell className="text-muted-foreground">{materia.codigo}</TableCell>
                     <TableCell>{materia.profesor}</TableCell>
                     <TableCell className="text-sm">

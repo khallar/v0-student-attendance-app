@@ -19,11 +19,12 @@ import {
   updateClaseComentario,
   activateQR,
   isQRValid,
-  getQRRemainingTime
+  getQRRemainingTime,
+  getCategorias
 } from '@/lib/supabase/queries'
 import { Textarea } from '@/components/ui/textarea'
 import { formatDateShort } from '@/lib/utils-attendance'
-import { ArrowLeft, Download, Plus, Save, Trash2, QrCode, Copy, Check, Link2, Clock, Play, ImageDown } from 'lucide-react'
+import { ArrowLeft, Download, Plus, Save, Trash2, QrCode, Copy, Check, Link2, Clock, Play, ImageDown, Folder } from 'lucide-react'
 import Link from 'next/link'
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
@@ -39,6 +40,8 @@ function AsistenciaPageContent() {
   const claseIdParam = searchParams.get('clase')
 
   const [materias, setMaterias] = useState<any[]>([])
+  const [categorias, setCategorias] = useState<any[]>([])
+  const [selectedCategoria, setSelectedCategoria] = useState<string>('todas')
   const [clases, setClases] = useState<any[]>([])
   const [alumnos, setAlumnos] = useState<any[]>([])
   const [asistencias, setAsistencias] = useState<Record<string, string>>({})
@@ -152,8 +155,12 @@ function AsistenciaPageContent() {
   async function loadMaterias() {
     try {
       setLoading(true)
-      const data = await getMaterias()
-      setMaterias(data)
+      const [materiasData, categoriasData] = await Promise.all([
+        getMaterias(),
+        getCategorias()
+      ])
+      setMaterias(materiasData)
+      setCategorias(categoriasData)
       if (materiaIdParam) {
         setSelectedMateria(materiaIdParam)
       }
@@ -163,6 +170,13 @@ function AsistenciaPageContent() {
       setLoading(false)
     }
   }
+
+  // Filter materias by selected categoria
+  const filteredMaterias = selectedCategoria === 'todas' 
+    ? materias 
+    : selectedCategoria === 'sin-categoria'
+    ? materias.filter(m => !m.categoria_id)
+    : materias.filter(m => m.categoria_id === selectedCategoria)
 
   async function loadClases(materiaId: string) {
     try {
@@ -318,7 +332,7 @@ function AsistenciaPageContent() {
     try {
       await activateQR(selectedClase)
       setQrActive(true)
-      setQrRemainingTime(5 * 60) // 5 minutes in seconds
+      setQrRemainingTime(10 * 60) // 10 minutes in seconds
     } catch (error) {
       console.error('Error activating QR:', error)
     }
@@ -443,6 +457,42 @@ function AsistenciaPageContent() {
         </div>
 
         <Card className="mb-8 p-6">
+          {/* Categoria filter */}
+          {categorias.length > 0 && (
+            <div className="mb-4 pb-4 border-b">
+              <div className="flex flex-wrap items-center gap-2">
+                <Folder className="h-4 w-4 text-muted-foreground" />
+                <span className="text-sm font-medium text-muted-foreground mr-1">Categoría:</span>
+                <Badge
+                  variant={selectedCategoria === 'todas' ? 'default' : 'outline'}
+                  className="cursor-pointer"
+                  onClick={() => setSelectedCategoria('todas')}
+                >
+                  Todas
+                </Badge>
+                {categorias.map((cat) => (
+                  <Badge
+                    key={cat.id}
+                    variant={selectedCategoria === cat.id ? 'default' : 'outline'}
+                    className="cursor-pointer"
+                    style={selectedCategoria === cat.id ? { backgroundColor: cat.color } : {}}
+                    onClick={() => setSelectedCategoria(cat.id)}
+                  >
+                    <div className="w-2 h-2 rounded-full mr-1.5" style={{ backgroundColor: selectedCategoria === cat.id ? '#fff' : cat.color }} />
+                    {cat.nombre}
+                  </Badge>
+                ))}
+                <Badge
+                  variant={selectedCategoria === 'sin-categoria' ? 'default' : 'outline'}
+                  className="cursor-pointer"
+                  onClick={() => setSelectedCategoria('sin-categoria')}
+                >
+                  Sin categoría
+                </Badge>
+              </div>
+            </div>
+          )}
+
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
             {/* Seleccionar Materia */}
             <div>
@@ -452,9 +502,14 @@ function AsistenciaPageContent() {
                   <SelectValue placeholder="Seleccionar materia..." />
                 </SelectTrigger>
                 <SelectContent>
-                  {materias.map((materia) => (
+                  {filteredMaterias.map((materia) => (
                     <SelectItem key={materia.id} value={materia.id}>
-                      {materia.nombre}
+                      <div className="flex items-center gap-2">
+                        {materia.categorias && (
+                          <div className="w-2 h-2 rounded-full" style={{ backgroundColor: materia.categorias.color }} />
+                        )}
+                        {materia.nombre}
+                      </div>
                     </SelectItem>
                   ))}
                 </SelectContent>
@@ -558,7 +613,7 @@ function AsistenciaPageContent() {
                         <DialogHeader>
                           <DialogTitle>Autoasistencia para Alumnos</DialogTitle>
                           <DialogDescription>
-                            Los alumnos tienen 5 minutos para marcar su presente una vez activado el QR
+                            Los alumnos tienen 10 minutos para marcar su presente una vez activado el QR
                           </DialogDescription>
                         </DialogHeader>
                         <div className="flex flex-col items-center gap-6 py-6">
@@ -588,7 +643,7 @@ function AsistenciaPageContent() {
                               size="lg"
                             >
                               <Play className="mr-2 h-5 w-5" />
-                              Activar QR (5 minutos)
+                              Activar QR (10 minutos)
                             </Button>
                           )}
                           
