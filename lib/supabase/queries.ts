@@ -582,14 +582,14 @@ export async function activateQR(claseId: string) {
   return data[0]
 }
 
-// Check if QR is still valid (within 5 minutes of activation)
+// Check if QR is still valid (within 10 minutes of activation)
 export function isQRValid(qr_activo_desde: string | null): boolean {
   if (!qr_activo_desde) return false
   const activatedAt = new Date(qr_activo_desde)
   const now = new Date()
   const diffMs = now.getTime() - activatedAt.getTime()
   const diffMinutes = diffMs / (1000 * 60)
-  return diffMinutes <= 5
+  return diffMinutes <= 10
 }
 
 // Get remaining time for QR in seconds
@@ -598,7 +598,7 @@ export function getQRRemainingTime(qr_activo_desde: string | null): number {
   const activatedAt = new Date(qr_activo_desde)
   const now = new Date()
   const diffMs = now.getTime() - activatedAt.getTime()
-  const remainingMs = (5 * 60 * 1000) - diffMs // 5 minutes in ms
+  const remainingMs = (10 * 60 * 1000) - diffMs // 10 minutes in ms
   return Math.max(0, Math.floor(remainingMs / 1000))
 }
 
