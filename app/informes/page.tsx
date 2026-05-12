@@ -122,7 +122,6 @@ export default function InformesPage() {
   async function loadMateriaData() {
     try {
       setLoadingMateria(true)
-      const today = new Date().toISOString()
       const [clasesData, alumnosData] = await Promise.all([
         getClasesByMateria(selectedMateria),
         getAlumnosByMateria(selectedMateria),
@@ -131,9 +130,9 @@ export default function InformesPage() {
       console.log('[v0] clasesData:', clasesData)
       console.log('[v0] alumnosData:', alumnosData)
 
-      // Only clases up to today
-      const clasesHoy = clasesData.filter((c: any) => new Date(c.fecha) <= new Date())
-      console.log('[v0] clasesHoy (filtradas hasta hoy):', clasesHoy)
+      // Use all clases sorted by date
+      const clasesHoy = clasesData.sort((a: any, b: any) => new Date(a.fecha).getTime() - new Date(b.fecha).getTime())
+      console.log('[v0] clasesHoy (todas ordenadas):', clasesHoy)
 
       const map = new Map<string, Map<string, string>>()
       await Promise.all(
@@ -285,7 +284,7 @@ export default function InformesPage() {
       <div className="mx-auto max-w-7xl p-4 sm:p-6 lg:p-8">
         <div className="mb-8">
           <h1 className="text-3xl font-bold">Informes de Asistencia</h1>
-          <p className="text-muted-foreground">Reportes y estadisticas detalladas — clases hasta la fecha actual</p>
+          <p className="text-muted-foreground">Reportes y estadísticas detalladas de todas las clases</p>
         </div>
 
         <Tabs defaultValue="por-materia" onValueChange={(v) => {
@@ -416,7 +415,7 @@ export default function InformesPage() {
                 <Card className="mb-6">
                   <CardHeader>
                     <CardTitle>Asistencia por Clase</CardTitle>
-                    <CardDescription>{currentMateria?.nombre} — clases dictadas hasta hoy</CardDescription>
+                    <CardDescription>{currentMateria?.nombre} — todas las clases registradas</CardDescription>
                   </CardHeader>
                   <CardContent>
                     {clases.length === 0 ? (
