@@ -128,13 +128,18 @@ export default function InformesPage() {
         getAlumnosByMateria(selectedMateria),
       ])
 
+      console.log('[v0] clasesData:', clasesData)
+      console.log('[v0] alumnosData:', alumnosData)
+
       // Only clases up to today
       const clasesHoy = clasesData.filter((c: any) => new Date(c.fecha) <= new Date())
+      console.log('[v0] clasesHoy (filtradas hasta hoy):', clasesHoy)
 
       const map = new Map<string, Map<string, string>>()
       await Promise.all(
         clasesHoy.map(async (clase: any) => {
           const asistenciasData = await getAsistenciasByClase(clase.id)
+          console.log('[v0] asistenciasData para clase', clase.id, ':', asistenciasData)
           const claseMap = new Map<string, string>()
           asistenciasData.forEach((a: any) => {
             claseMap.set(a.alumno_id, a.estado?.toLowerCase())
@@ -142,6 +147,8 @@ export default function InformesPage() {
           map.set(clase.id, claseMap)
         })
       )
+
+      console.log('[v0] asistenciasMap size:', map.size)
 
       setClases(clasesHoy)
       setAlumnos(alumnosData)
