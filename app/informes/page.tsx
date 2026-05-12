@@ -17,8 +17,9 @@ import {
   getInformeByAlumno,
   getCategorias,
 } from '@/lib/supabase/queries'
-import { AlertCircle, Users, BookOpen, Calendar, TrendingUp, CheckCircle, Download, Folder } from 'lucide-react'
+import { AlertCircle, Users, BookOpen, Calendar, TrendingUp, CheckCircle, Download, Folder, Search, Filter, X } from 'lucide-react'
 import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
 import * as XLSX from 'xlsx'
 import { PieChart, Pie, Cell, Legend, Tooltip, ResponsiveContainer } from 'recharts'
 
@@ -70,10 +71,14 @@ export default function InformesPage() {
   // --- Tab Por Alumno ---
   const [allAlumnos, setAllAlumnos] = useState<any[]>([])
   const [selectedAlumno, setSelectedAlumno] = useState<string>('')
-  const [alumnoData, setAlumnoData] = useState<any | null>(null) // alumno object
-  const [alumnoMaterias, setAlumnoMaterias] = useState<any[]>([]) // array of materias con stats
+  const [alumnoData, setAlumnoData] = useState<any | null>(null)
+  const [alumnoMaterias, setAlumnoMaterias] = useState<any[]>([])
   const [loadingAlumno, setLoadingAlumno] = useState(false)
   const [loadingAlumnosList, setLoadingAlumnosList] = useState(false)
+  // Filtros por alumno
+  const [searchAlumno, setSearchAlumno] = useState('')
+  const [filterEstado, setFilterEstado] = useState<'todos' | 'regular' | 'libre'>('todos')
+  const [filterMateria, setFilterMateria] = useState<string>('todas')
 
   useEffect(() => {
     loadInit()
@@ -224,6 +229,29 @@ export default function InformesPage() {
 
     return { promedioPresentes, totalPresente, totalAusente, totalJustificado, totalTardanza }
   }
+
+  // --- Filtrado de alumnos en tab Por Alumno ---
+  // Extraer materias únicas de todos los alumnos para el filtro
+  const materiasDeAlumnos = Array.from(
+    new Map(
+      allAlumnos.flatMap((a) => (a.materias || []).map((m: any) => [m.id, m]))
+    ).values()
+  ).sort((a: any, b: any) => a.nombre.localeCompare(b.nombre))
+
+  const filteredAlumnos = allAlumnos.filter((a) => {
+    const texto = searchAlumno.toLowerCase()
+    const matchTexto =
+      !texto ||
+      a.nombre?.toLowerCase().includes(texto) ||
+      a.apellido?.toLowerCase().includes(texto) ||
+      a.dni?.includes(texto)
+
+    const matchMateria =
+      filterMateria === 'todas' ||
+      (a.materias || []).some((m: any) => m.id === filterMateria)
+
+    return matchTexto && matchMateria
+  })
 
   // --- Computed for Por Alumno ---
   const totalClasesAlumno = alumnoMaterias.reduce((s, m) => s + m.total, 0)
@@ -586,31 +614,89 @@ export default function InformesPage() {
 
           {/* ======================== TAB: Por Alumno ======================== */}
           <TabsContent value="por-alumno">
-            {/* Selector de alumno */}
-            <Card className="mb-6">
-              <CardContent className="pt-6">
-                {loadingAlumnosList ? (
-                  <p className="text-sm text-muted-foreground">Cargando alumnos...</p>
-                ) : (
-                  <Select value={selectedAlumno} onValueChange={setSelectedAlumno}>
-                    <SelectTrigger className="max-w-sm">
-                      <SelectValue placeholder="Selecciona un alumno..." />
+            {/* Filtros y lista de alumnos */}
+            <div className="grid gap-6 lg:grid-cols-[320px_1fr]">
+              <div className="flex flex-col gap-3">
+                {/* Buscador */}
+                <div className="relative">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                  <Input
+                    placeholder="Buscar por nombre, apellido o DNI..."
+                    value={searchAlumno}
+                    onChange={(e) => setSearchAlumno(e.target.value)}
+                    className="pl-9"
+                  />
+                  {searchAlumno && (
+                    <button onClick={() => setSearchAlumno('')} className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground">
+                      <X className="h-4 w-4" />
+                    </button>
+                  )}
+                </div>
+
+                {/* Filtro por materia */}
+                {materiasDeAlumnos.length > 0 && (
+                  <Select value={filterMateria} onValueChange={setFilterMateria}>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Filtrar por materia..." />
                     </SelectTrigger>
                     <SelectContent>
-                      {allAlumnos.map((a) => (
-                        <SelectItem key={a.id} value={a.id}>
-                          {a.apellido}, {a.nombre} — DNI {a.dni}
+                      <SelectItem value="todas">Todas las materias</SelectItem>
+                      {materiasDeAlumnos.map((m: any) => (
+                        <SelectItem key={m.id} value={m.id}>
+                          {m.nombre}
                         </SelectItem>
                       ))}
                     </SelectContent>
                   </Select>
                 )}
-              </CardContent>
-            </Card>
 
-            {loadingAlumno && (
-              <div className="flex justify-center py-12 text-muted-foreground">Cargando informe...</div>
-            )}
+                {/* Chips de estado */}
+                <div className="flex gap-2 flex-wrap">
+                  {(['todos', 'regular', 'libre'] as const).map((estado) => (
+                    <Badge
+                      key={estado}
+                      variant={filterEstado === estado ? 'default' : 'outline'}
+                      className="cursor-pointer capitalize"
+                      onClick={() => setFilterEstado(estado)}
+                    >
+                      {estado === 'todos' ? 'Todos' : estado === 'regular' ? 'Regular' : 'Libre'}
+                    </Badge>
+                  ))}
+                </div>
+
+                {/* Lista de alumnos */}
+                {loadingAlumnosList ? (
+                  <p className="text-sm text-muted-foreground py-4 text-center">Cargando alumnos...</p>
+                ) : (
+                  <Card className="overflow-hidden">
+                    <div className="max-h-[60vh] overflow-y-auto divide-y">
+                      {filteredAlumnos.length === 0 ? (
+                        <p className="text-sm text-muted-foreground py-6 text-center">Sin resultados</p>
+                      ) : (
+                        filteredAlumnos.map((a) => (
+                          <button
+                            key={a.id}
+                            className={`w-full text-left px-4 py-3 text-sm transition-colors hover:bg-muted/60 ${selectedAlumno === a.id ? 'bg-muted font-medium' : ''}`}
+                            onClick={() => setSelectedAlumno(a.id)}
+                          >
+                            <div className="font-medium">{a.apellido}, {a.nombre}</div>
+                            <div className="text-xs text-muted-foreground">DNI {a.dni}</div>
+                          </button>
+                        ))
+                      )}
+                    </div>
+                    <div className="px-4 py-2 bg-muted/30 border-t text-xs text-muted-foreground">
+                      {filteredAlumnos.length} alumno{filteredAlumnos.length !== 1 ? 's' : ''}
+                    </div>
+                  </Card>
+                )}
+              </div>
+
+              {/* Panel derecho: informe del alumno seleccionado */}
+              <div>
+                {loadingAlumno && (
+                  <div className="flex justify-center py-12 text-muted-foreground">Cargando informe...</div>
+                )}
 
             {selectedAlumno && !loadingAlumno && alumnoData && (
               <>
@@ -726,11 +812,14 @@ export default function InformesPage() {
             )}
 
             {!selectedAlumno && !loadingAlumnosList && (
-              <div className="flex flex-col items-center justify-center py-16 text-muted-foreground gap-2">
-                <Users className="h-10 w-10 opacity-30" />
-                <p>Selecciona un alumno para ver su informe de asistencia</p>
-              </div>
-            )}
+                <div className="flex flex-col items-center justify-center py-16 text-muted-foreground gap-2">
+                  <Users className="h-10 w-10 opacity-30" />
+                  <p>Selecciona un alumno de la lista para ver su informe</p>
+                </div>
+              )}
+
+              </div>{/* end panel derecho */}
+            </div>{/* end grid */}
           </TabsContent>
         </Tabs>
       </div>
