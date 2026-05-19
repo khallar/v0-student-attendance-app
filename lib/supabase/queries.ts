@@ -508,7 +508,10 @@ export async function getAsistenciasByAlumno(alumnoId: string) {
 // Get full attendance report for a single alumno across all their materias, up to today
 export async function getInformeByAlumno(alumnoId: string) {
   const supabase = createClient()
-  const today = new Date().toISOString()
+  // Use end of today to include all clases from today
+  const today = new Date()
+  today.setHours(23, 59, 59, 999)
+  const todayStr = today.toISOString()
 
   // Get materias the alumno is enrolled in
   const { data: enrollments, error: enrollError } = await supabase
@@ -527,7 +530,7 @@ export async function getInformeByAlumno(alumnoId: string) {
         .from('clases')
         .select('id, fecha, horario')
         .eq('materia_id', materia.id)
-        .lte('fecha', today)
+        .lte('fecha', todayStr)
         .order('fecha', { ascending: true })
       if (clasesError) throw clasesError
 

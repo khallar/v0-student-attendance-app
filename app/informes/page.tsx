@@ -132,18 +132,13 @@ export default function InformesPage() {
         getAlumnosByMateria(selectedMateria),
       ])
 
-      console.log('[v0] clasesData:', clasesData)
-      console.log('[v0] alumnosData:', alumnosData)
-
-      // Use all clases sorted by date
-      const clasesHoy = clasesData.sort((a: any, b: any) => new Date(a.fecha).getTime() - new Date(b.fecha).getTime())
-      console.log('[v0] clasesHoy (todas ordenadas):', clasesHoy)
+      // Sort all clases by date
+      const todasLasClases = clasesData.sort((a: any, b: any) => new Date(a.fecha).getTime() - new Date(b.fecha).getTime())
 
       const map = new Map<string, Map<string, string>>()
       await Promise.all(
-        clasesHoy.map(async (clase: any) => {
+        todasLasClases.map(async (clase: any) => {
           const asistenciasData = await getAsistenciasByClase(clase.id)
-          console.log('[v0] asistenciasData para clase', clase.id, ':', asistenciasData)
           const claseMap = new Map<string, string>()
           asistenciasData.forEach((a: any) => {
             claseMap.set(a.alumno_id, a.estado?.toLowerCase())
@@ -152,9 +147,7 @@ export default function InformesPage() {
         })
       )
 
-      console.log('[v0] asistenciasMap size:', map.size)
-
-      setClases(clasesHoy)
+      setClases(todasLasClases)
       setAlumnos(alumnosData)
       setAsistenciasMap(map)
     } catch (error) {
@@ -186,46 +179,56 @@ export default function InformesPage() {
   }
 
   // --- Helpers for Por Materia ---
+  // Filter clases up to today for statistics calculation
+  const today = new Date()
+  today.setHours(23, 59, 59, 999) // End of today
+  const clasesPasadas = clases.filter((c: any) => new Date(c.fecha) <= today)
+
   function getAsistenciaStats(alumnoId: string) {
     let presente = 0, ausente = 0, justificado = 0, tardanza = 0
-    asistenciasMap.forEach((claseMap) => {
-      const estado = claseMap.get(alumnoId)?.toLowerCase()
+    // Only count clases that have already occurred
+    clasesPasadas.forEach((clase: any) => {
+      const claseMap = asistenciasMap.get(clase.id)
+      const estado = claseMap?.get(alumnoId)?.toLowerCase()
       if (!estado) { ausente++; return }
       if (estado === 'presente') presente++
       else if (estado === 'ausente') ausente++
       else if (estado === 'justificado') justificado++
       else if (estado === 'tardanza') tardanza++
     })
-    const total = clases.length
+    const total = clasesPasadas.length
     const porcentajeAsistencia = total === 0 ? 0 : Math.round(((presente + justificado) / total) * 100)
     return { presente, ausente, justificado, tardanza, total, porcentajeAsistencia }
   }
 
   // Calculate average presentes per clase and overall attendance breakdown
   function getGlobalStats() {
-    if (clases.length === 0 || alumnos.length === 0) {
+    if (clasesPasadas.length === 0 || alumnos.length === 0) {
       return { promedioPresentes: 0, totalPresente: 0, totalAusente: 0, totalJustificado: 0, totalTardanza: 0 }
     }
 
     let totalPresente = 0, totalAusente = 0, totalJustificado = 0, totalTardanza = 0
 
-    asistenciasMap.forEach((claseMap) => {
-      claseMap.forEach((estado) => {
-        const s = estado?.toLowerCase()
-        if (s === 'presente') totalPresente++
-        else if (s === 'ausente') totalAusente++
-        else if (s === 'justificado') totalJustificado++
-        else if (s === 'tardanza') totalTardanza++
-      })
+    clasesPasadas.forEach((clase: any) => {
+      const claseMap = asistenciasMap.get(clase.id)
+      if (claseMap) {
+        claseMap.forEach((estado) => {
+          const s = estado?.toLowerCase()
+          if (s === 'presente') totalPresente++
+          else if (s === 'ausente') totalAusente++
+          else if (s === 'justificado') totalJustificado++
+          else if (s === 'tardanza') totalTardanza++
+        })
+      }
     })
 
     // Count missing registrations as ausente
     const totalAsistencias = totalPresente + totalAusente + totalJustificado + totalTardanza
-    const expectedTotal = clases.length * alumnos.length
+    const expectedTotal = clasesPasadas.length * alumnos.length
     const missingAsistencias = expectedTotal - totalAsistencias
     totalAusente += missingAsistencias
 
-    const promedioPresentes = clases.length > 0 ? Math.round(totalPresente / clases.length) : 0
+    const promedioPresentes = clasesPasadas.length > 0 ? Math.round(totalPresente / clasesPasadas.length) : 0
 
     return { promedioPresentes, totalPresente, totalAusente, totalJustificado, totalTardanza }
   }
@@ -408,8 +411,11 @@ export default function InformesPage() {
                   <Card>
                     <CardContent className="pt-6 text-center">
                       <Calendar className="h-8 w-8 mx-auto mb-2 text-blue-600" />
-                      <p className="text-3xl font-bold text-blue-600">{clases.length}</p>
+                      <p className="text-3xl font-bold text-blue-600">{clasesPasadas.length}</p>
                       <p className="text-sm text-muted-foreground">Clases dictadas</p>
+                      {clases.length > clasesPasadas.length && (
+                        <p className="text-xs text-muted-foreground mt-1">({clases.length - clasesPasadas.length} futuras)</p>
+                      )}
                     </CardContent>
                   </Card>
                   <Card>
@@ -443,7 +449,9 @@ export default function InformesPage() {
                 <Card className="mb-6">
                   <CardHeader>
                     <CardTitle>Asistencia por Clase</CardTitle>
-                    <CardDescription>{currentMateria?.nombre} — todas las clases registradas</CardDescription>
+                    <CardDescription>
+                      {currentMateria?.nombre} — Los porcentajes se calculan sobre las {clasesPasadas.length} clases dictadas hasta hoy
+                    </CardDescription>
                   </CardHeader>
                   <CardContent>
                     {clases.length === 0 ? (
