@@ -332,7 +332,7 @@ function AsistenciaPageContent() {
     try {
       await activateQR(selectedClase)
       setQrActive(true)
-      setQrRemainingTime(10 * 60) // 10 minutes in seconds
+      setQrRemainingTime(25 * 60) // 25 minutes in seconds
     } catch (error) {
       console.error('Error activating QR:', error)
     }
@@ -613,7 +613,7 @@ function AsistenciaPageContent() {
                         <DialogHeader>
                           <DialogTitle>Autoasistencia para Alumnos</DialogTitle>
                           <DialogDescription>
-                            Los alumnos tienen 10 minutos para marcar su presente una vez activado el QR
+                            Los alumnos tienen 25 minutos para marcar su presente una vez activado el QR
                           </DialogDescription>
                         </DialogHeader>
                         <div className="flex flex-col items-center gap-6 py-6">
@@ -643,7 +643,7 @@ function AsistenciaPageContent() {
                               size="lg"
                             >
                               <Play className="mr-2 h-5 w-5" />
-                              Activar QR (10 minutos)
+                              Activar QR (25 minutos)
                             </Button>
                           )}
                           
