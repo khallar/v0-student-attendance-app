@@ -229,7 +229,7 @@ pnpm build
 
 ## Licencia
 
-Proyecto desarrollado para la UTN.
+Proyecto desarrollado por Karim Hallar
 
 ## Soporte
 
