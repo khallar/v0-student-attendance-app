@@ -60,6 +60,7 @@ function AsistenciaPageContent() {
   const [comentario, setComentario] = useState('')
   const [qrRemainingTime, setQrRemainingTime] = useState(0)
   const [qrActive, setQrActive] = useState(false)
+  const [qrDuration, setQrDuration] = useState('5') // Duration in minutes: '5', '10', '30', or '60'
 
   // Load materias on mount
   useEffect(() => {
@@ -220,9 +221,9 @@ function AsistenciaPageContent() {
       setComentario(claseData?.comentario || '')
       
       // Check QR status
-      if (isQRValid(claseData?.qr_activo_desde)) {
+      if (isQRValid(claseData?.qr_activo_desde, claseData?.qr_duracion_minutos)) {
         setQrActive(true)
-        setQrRemainingTime(getQRRemainingTime(claseData.qr_activo_desde))
+        setQrRemainingTime(getQRRemainingTime(claseData.qr_activo_desde, claseData?.qr_duracion_minutos))
       } else {
         setQrActive(false)
         setQrRemainingTime(0)
@@ -330,9 +331,10 @@ function AsistenciaPageContent() {
   async function handleActivateQR() {
     if (!selectedClase) return
     try {
-      await activateQR(selectedClase)
+      const durationMinutes = parseInt(qrDuration, 10)
+      await activateQR(selectedClase, durationMinutes)
       setQrActive(true)
-      setQrRemainingTime(25 * 60) // 25 minutes in seconds
+      setQrRemainingTime(durationMinutes * 60) // Convert to seconds
     } catch (error) {
       console.error('Error activating QR:', error)
     }
@@ -613,7 +615,7 @@ function AsistenciaPageContent() {
                         <DialogHeader>
                           <DialogTitle>Autoasistencia para Alumnos</DialogTitle>
                           <DialogDescription>
-                            Los alumnos tienen 25 minutos para marcar su presente una vez activado el QR
+                            Selecciona el tiempo de vida del QR para que los alumnos marquen su presente
                           </DialogDescription>
                         </DialogHeader>
                         <div className="flex flex-col items-center gap-6 py-6">
@@ -635,16 +637,32 @@ function AsistenciaPageContent() {
                             </div>
                           )}
                           
-                          {/* Activate button */}
+                          {/* Duration selector and Activate button */}
                           {!qrActive && (
-                            <Button 
-                              onClick={handleActivateQR}
-                              className="w-full bg-green-600 hover:bg-green-700"
-                              size="lg"
-                            >
-                              <Play className="mr-2 h-5 w-5" />
-                              Activar QR (25 minutos)
-                            </Button>
+                            <div className="w-full space-y-3">
+                              <div>
+                                <label className="text-sm font-medium block mb-2">Tiempo de vida del QR</label>
+                                <Select value={qrDuration} onValueChange={setQrDuration}>
+                                  <SelectTrigger className="w-full">
+                                    <SelectValue />
+                                  </SelectTrigger>
+                                  <SelectContent>
+                                    <SelectItem value="5">5 minutos</SelectItem>
+                                    <SelectItem value="10">10 minutos</SelectItem>
+                                    <SelectItem value="30">30 minutos</SelectItem>
+                                    <SelectItem value="60">60 minutos</SelectItem>
+                                  </SelectContent>
+                                </Select>
+                              </div>
+                              <Button 
+                                onClick={handleActivateQR}
+                                className="w-full bg-green-600 hover:bg-green-700"
+                                size="lg"
+                              >
+                                <Play className="mr-2 h-5 w-5" />
+                                Activar QR ({qrDuration} minutos)
+                              </Button>
+                            </div>
                           )}
                           
                           {/* QR Code - only show when active */}

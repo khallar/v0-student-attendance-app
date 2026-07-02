@@ -573,35 +573,38 @@ export async function getInformeByAlumno(alumnoId: string) {
   return materiasConStats
 }
 
-// Activate QR for a clase (sets qr_activo_desde to NOW)
-export async function activateQR(claseId: string) {
+// Activate QR for a clase (sets qr_activo_desde to NOW and stores duration)
+export async function activateQR(claseId: string, durationMinutes: number = 25) {
   const supabase = createClient()
   const { data, error } = await supabase
     .from('clases')
-    .update({ qr_activo_desde: new Date().toISOString() })
+    .update({ 
+      qr_activo_desde: new Date().toISOString(),
+      qr_duracion_minutos: durationMinutes
+    })
     .eq('id', claseId)
     .select()
   if (error) throw error
   return data[0]
 }
 
-// Check if QR is still valid (within 25 minutes of activation)
-export function isQRValid(qr_activo_desde: string | null): boolean {
+// Check if QR is still valid (based on stored duration)
+export function isQRValid(qr_activo_desde: string | null, qr_duracion_minutos: number = 25): boolean {
   if (!qr_activo_desde) return false
   const activatedAt = new Date(qr_activo_desde)
   const now = new Date()
   const diffMs = now.getTime() - activatedAt.getTime()
   const diffMinutes = diffMs / (1000 * 60)
-  return diffMinutes <= 25
+  return diffMinutes <= qr_duracion_minutos
 }
 
-// Get remaining time for QR in seconds
-export function getQRRemainingTime(qr_activo_desde: string | null): number {
+// Get remaining time for QR in seconds (based on stored duration)
+export function getQRRemainingTime(qr_activo_desde: string | null, qr_duracion_minutos: number = 25): number {
   if (!qr_activo_desde) return 0
   const activatedAt = new Date(qr_activo_desde)
   const now = new Date()
   const diffMs = now.getTime() - activatedAt.getTime()
-  const remainingMs = (25 * 60 * 1000) - diffMs // 25 minutes in ms
+  const remainingMs = (qr_duracion_minutos * 60 * 1000) - diffMs
   return Math.max(0, Math.floor(remainingMs / 1000))
 }
 
