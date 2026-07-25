@@ -16,6 +16,8 @@ import {
   getAllAlumnosWithMaterias,
   getInformeByAlumno,
   getCategorias,
+  getAsistenciaDocentes,
+  getDocentesFromMateria,
 } from '@/lib/supabase/queries'
 import { AlertCircle, Users, BookOpen, Calendar, TrendingUp, CheckCircle, Download, Folder, Search, Filter, X } from 'lucide-react'
 import { Button } from '@/components/ui/button'
@@ -264,7 +266,7 @@ export default function InformesPage() {
   const currentMateria = materias.find((m) => m.id === selectedMateria)
 
   // Export Excel function
-  function exportToExcel() {
+  async function exportToExcel() {
     if (!currentMateria || clases.length === 0 || alumnos.length === 0) return
 
     // Build header row: Apellido, Nombre, DNI, then each class date
@@ -291,8 +293,47 @@ export default function InformesPage() {
       return row
     })
 
+    // Cargar asistencia de docentes para todas las clases
+    const docentesRows: (string | number)[][] = []
+    const docentes = getDocentesFromMateria(currentMateria)
+    
+    if (docentes.length > 0) {
+      // Cargar asistencia de docentes
+      const docentesAsistenciaMap = new Map<string, Map<string, boolean>>() // clase_id -> rol -> presente
+      await Promise.all(
+        clases.map(async (clase) => {
+          const asistenciasData = await getAsistenciaDocentes(clase.id)
+          const roleMap = new Map<string, boolean>()
+          asistenciasData.forEach((a: any) => {
+            roleMap.set(a.rol, a.presente)
+          })
+          docentesAsistenciaMap.set(clase.id, roleMap)
+        })
+      )
+
+      // Agregar fila en blanco
+      docentesRows.push(['', '', '', ...clases.map(() => ''), ''])
+
+      // Agregar filas de docentes
+      docentes.forEach((d) => {
+        const row: (string | number)[] = [d.label, d.nombre, '']
+        let presenteCount = 0
+        clases.forEach((clase) => {
+          const roleMap = docentesAsistenciaMap.get(clase.id)
+          const presente = roleMap?.get(d.rol) ?? true
+          const estadoText = presente ? 'P' : 'A'
+          row.push(estadoText)
+          if (presente) presenteCount++
+        })
+        // Calcular porcentaje de asistencia del docente
+        const porcentajeAsistencia = clases.length > 0 ? Math.round((presenteCount / clases.length) * 100) : 0
+        row.push(`${porcentajeAsistencia}%`)
+        docentesRows.push(row)
+      })
+    }
+
     // Create worksheet
-    const ws = XLSX.utils.aoa_to_sheet([headers, ...rows])
+    const ws = XLSX.utils.aoa_to_sheet([headers, ...rows, ...docentesRows])
 
     // Set column widths
     ws['!cols'] = [
@@ -391,7 +432,7 @@ export default function InformesPage() {
                     </SelectContent>
                   </Select>
                   {selectedMateria && clases.length > 0 && alumnos.length > 0 && (
-                    <Button onClick={exportToExcel} variant="outline" className="gap-2">
+                    <Button onClick={() => exportToExcel()} variant="outline" className="gap-2">
                       <Download className="h-4 w-4" />
                       Descargar Excel
                     </Button>
