@@ -15,7 +15,7 @@ export const BEDELES_AUTORIZADOS: Bedel[] = [
     id: 'bedel_001',
     nombre: 'Administrador',
     email: 'admin@universidad.edu.ar',
-    rol: 'admin',
+    rol: 'Admin2026!',
   },
   {
     id: 'bedel_002',
