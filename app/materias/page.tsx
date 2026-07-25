@@ -51,6 +51,8 @@ export default function MateriasPage() {
     nombre: '',
     codigo: '',
     profesor: '',
+    docente_ayudante: '',
+    docente_ayudante_2: '',
     repeticion: 'nunca',
     fecha_inicio: '',
     fecha_fin: '',
@@ -159,7 +161,9 @@ export default function MateriasPage() {
           '', // hora_hasta deprecated
           formData.ubicacion,
           formData.horarios_por_dia,
-          formData.categoria_id
+          formData.categoria_id,
+          formData.docente_ayudante,
+          formData.docente_ayudante_2
         )
         materiaId = materia.id
         
@@ -191,7 +195,9 @@ export default function MateriasPage() {
           '', // hora_hasta deprecated
           formData.ubicacion,
           formData.horarios_por_dia,
-          formData.categoria_id
+          formData.categoria_id,
+          formData.docente_ayudante,
+          formData.docente_ayudante_2
         )
         materiaId = materia.id
         
@@ -227,6 +233,8 @@ export default function MateriasPage() {
       nombre: '',
       codigo: '',
       profesor: '',
+      docente_ayudante: '',
+      docente_ayudante_2: '',
       repeticion: 'nunca',
       fecha_inicio: '',
       fecha_fin: '',
@@ -243,6 +251,8 @@ export default function MateriasPage() {
       nombre: materia.nombre,
       codigo: materia.codigo,
       profesor: materia.profesor,
+      docente_ayudante: materia.docente_ayudante || '',
+      docente_ayudante_2: materia.docente_ayudante_2 || '',
       repeticion: materia.repeticion || 'nunca',
       fecha_inicio: materia.fecha_inicio ? materia.fecha_inicio.split('T')[0] : '',
       fecha_fin: materia.fecha_fin ? materia.fecha_fin.split('T')[0] : '',
@@ -389,11 +399,27 @@ export default function MateriasPage() {
                     />
                   </div>
                   <div>
-                    <label className="text-sm font-medium">Profesor</label>
+                    <label className="text-sm font-medium">Profesor responsable</label>
                     <Input
                       value={formData.profesor}
                       onChange={(e) => setFormData({ ...formData, profesor: e.target.value })}
                       placeholder="Ej: Juan Pérez"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-sm font-medium">Docente ayudante</label>
+                    <Input
+                      value={formData.docente_ayudante}
+                      onChange={(e) => setFormData({ ...formData, docente_ayudante: e.target.value })}
+                      placeholder="Ej: María Gómez (opcional)"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-sm font-medium">Docente ayudante 2</label>
+                    <Input
+                      value={formData.docente_ayudante_2}
+                      onChange={(e) => setFormData({ ...formData, docente_ayudante_2: e.target.value })}
+                      placeholder="Ej: Carlos López (opcional)"
                     />
                   </div>
                   <div>
@@ -600,7 +626,7 @@ export default function MateriasPage() {
                   <TableHead>Nombre</TableHead>
                   <TableHead>Categoría</TableHead>
                   <TableHead>Código</TableHead>
-                  <TableHead>Profesor</TableHead>
+                  <TableHead>Docentes</TableHead>
                   <TableHead>Horario / Ubicacion</TableHead>
                   <TableHead className="text-right">Acciones</TableHead>
                 </TableRow>
@@ -624,7 +650,17 @@ export default function MateriasPage() {
                       )}
                     </TableCell>
                     <TableCell className="text-muted-foreground">{materia.codigo}</TableCell>
-                    <TableCell>{materia.profesor}</TableCell>
+                    <TableCell className="text-sm">
+                      <div className="space-y-0.5">
+                        <div>{materia.profesor}</div>
+                        {materia.docente_ayudante && (
+                          <div className="text-xs text-muted-foreground">{materia.docente_ayudante}</div>
+                        )}
+                        {materia.docente_ayudante_2 && (
+                          <div className="text-xs text-muted-foreground">{materia.docente_ayudante_2}</div>
+                        )}
+                      </div>
+                    </TableCell>
                     <TableCell className="text-sm">
                       {materia.dias_dictado && materia.dias_dictado.length > 0 ? (
                         <div className="space-y-1">

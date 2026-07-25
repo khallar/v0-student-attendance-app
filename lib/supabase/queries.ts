@@ -61,7 +61,9 @@ export async function createMateria(
   hora_hasta: string = '',
   ubicacion: string = '',
   horarios_por_dia: Record<string, { desde: string; hasta: string }> = {},
-  categoria_id: string = ''
+  categoria_id: string = '',
+  docente_ayudante: string = '',
+  docente_ayudante_2: string = ''
 ) {
   const supabase = createClient()
   const { data, error } = await supabase
@@ -78,7 +80,9 @@ export async function createMateria(
       hora_hasta: hora_hasta || null,
       ubicacion: ubicacion || null,
       horarios_por_dia: Object.keys(horarios_por_dia).length > 0 ? horarios_por_dia : null,
-      categoria_id: categoria_id || null
+      categoria_id: categoria_id || null,
+      docente_ayudante: docente_ayudante || null,
+      docente_ayudante_2: docente_ayudante_2 || null
     }])
     .select('*, categorias(id, nombre, color)')
   if (error) throw error
@@ -98,7 +102,9 @@ export async function updateMateria(
   hora_hasta: string = '',
   ubicacion: string = '',
   horarios_por_dia: Record<string, { desde: string; hasta: string }> = {},
-  categoria_id: string = ''
+  categoria_id: string = '',
+  docente_ayudante: string = '',
+  docente_ayudante_2: string = ''
 ) {
   const supabase = createClient()
   const { data, error } = await supabase
@@ -115,7 +121,9 @@ export async function updateMateria(
       hora_hasta: hora_hasta || null,
       ubicacion: ubicacion || null,
       horarios_por_dia: Object.keys(horarios_por_dia).length > 0 ? horarios_por_dia : null,
-      categoria_id: categoria_id || null
+      categoria_id: categoria_id || null,
+      docente_ayudante: docente_ayudante || null,
+      docente_ayudante_2: docente_ayudante_2 || null
     })
     .eq('id', id)
     .select('*, categorias(id, nombre, color)')
@@ -737,5 +745,55 @@ export async function deleteUsuario(id: string) {
   const supabase = createClient()
   const { error } = await supabase.from('usuarios').delete().eq('id', id)
   if (error) throw error
+}
+
+// ============================================================
+// Asistencia de docentes (registrada manualmente por el bedel)
+// ============================================================
+
+// Get the list of docentes assigned to a materia (only those with a name)
+export function getDocentesFromMateria(materia: any): { rol: string; label: string; nombre: string }[] {
+  if (!materia) return []
+  const docentes: { rol: string; label: string; nombre: string }[] = []
+  if (materia.profesor && materia.profesor.trim()) {
+    docentes.push({ rol: 'responsable', label: 'Profesor responsable', nombre: materia.profesor.trim() })
+  }
+  if (materia.docente_ayudante && materia.docente_ayudante.trim()) {
+    docentes.push({ rol: 'ayudante', label: 'Docente ayudante', nombre: materia.docente_ayudante.trim() })
+  }
+  if (materia.docente_ayudante_2 && materia.docente_ayudante_2.trim()) {
+    docentes.push({ rol: 'ayudante_2', label: 'Docente ayudante 2', nombre: materia.docente_ayudante_2.trim() })
+  }
+  return docentes
+}
+
+// Get teacher attendance records for a clase
+export async function getAsistenciaDocentes(claseId: string) {
+  const supabase = createClient()
+  const { data, error } = await supabase
+    .from('asistencia_docentes')
+    .select('*')
+    .eq('clase_id', claseId)
+  if (error) throw error
+  return data || []
+}
+
+// Upsert a teacher attendance record for a clase
+export async function upsertAsistenciaDocente(
+  claseId: string,
+  rol: string,
+  nombre: string,
+  presente: boolean
+) {
+  const supabase = createClient()
+  const { data, error } = await supabase
+    .from('asistencia_docentes')
+    .upsert(
+      [{ clase_id: claseId, rol, nombre, presente, updated_at: new Date().toISOString() }],
+      { onConflict: 'clase_id,rol' }
+    )
+    .select()
+  if (error) throw error
+  return data[0]
 }
 
