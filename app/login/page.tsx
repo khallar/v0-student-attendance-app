@@ -2,7 +2,7 @@
 
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { loginWithEmail, canLogin } from '@/lib/auth-mock'
+import { login } from '@/lib/auth-mock'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
@@ -12,6 +12,7 @@ import { Logo } from '@/components/logo'
 export default function LoginPage() {
   const router = useRouter()
   const [email, setEmail] = useState('')
+  const [password, setPassword] = useState('')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
 
@@ -21,20 +22,15 @@ export default function LoginPage() {
     setError('')
 
     try {
-      if (!canLogin(email)) {
-        setError('Email no autorizado. Contacta al administrador.')
-        return
-      }
-      
-      const user = loginWithEmail(email)
+      const user = await login(email, password)
       if (user) {
         router.push('/dashboard')
       } else {
-        setError('Error al iniciar sesión.')
+        setError('Email o contraseña incorrectos.')
       }
     } catch (err) {
       console.error('Login error:', err)
-      setError('Error al iniciar sesión.')
+      setError('Error al iniciar sesión. Intenta nuevamente.')
     } finally {
       setLoading(false)
     }
@@ -64,6 +60,19 @@ export default function LoginPage() {
                 value={email}
                 onChange={(e) => { setEmail(e.target.value); setError(''); }}
                 placeholder="tu@universidad.edu.ar"
+                required
+              />
+            </div>
+            <div className="space-y-2">
+              <label htmlFor="password" className="text-sm font-medium">
+                Contraseña
+              </label>
+              <Input
+                id="password"
+                type="password"
+                value={password}
+                onChange={(e) => { setPassword(e.target.value); setError(''); }}
+                placeholder="••••••••"
                 required
               />
             </div>

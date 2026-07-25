@@ -27,6 +27,11 @@ const NAV_ITEMS: NavItem[] = [
   { label: 'Informes', href: '/informes', icon: '📈' },
 ]
 
+// Items visibles solo para el administrador
+const ADMIN_NAV_ITEMS: NavItem[] = [
+  { label: 'Usuarios', href: '/usuarios', icon: '👥' },
+]
+
 export function MainNav() {
   const router = useRouter()
   const [user, setUser] = useState<any>(null)
@@ -43,6 +48,8 @@ export function MainNav() {
 
   if (!user) return null
 
+  const navItems = user.rol === 'admin' ? [...NAV_ITEMS, ...ADMIN_NAV_ITEMS] : NAV_ITEMS
+
   return (
     <nav className="sticky top-0 z-50 border-b bg-background">
       <div className="mx-auto max-w-7xl px-4 py-4 sm:px-6 lg:px-8">
@@ -53,7 +60,7 @@ export function MainNav() {
 
           {/* Desktop Nav */}
           <div className="hidden md:flex items-center gap-1">
-            {NAV_ITEMS.map((item) => (
+            {navItems.map((item) => (
               <Link
                 key={`desktop-${item.href}`}
                 href={item.href}
@@ -91,7 +98,7 @@ export function MainNav() {
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end" className="w-48">
-                {NAV_ITEMS.map((item) => (
+                {navItems.map((item) => (
                   <DropdownMenuItem key={`mobile-${item.href}`} asChild>
                     <Link href={item.href} className="w-full">
                       {item.icon} {item.label}

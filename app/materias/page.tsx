@@ -10,6 +10,7 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, Di
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Checkbox } from '@/components/ui/checkbox'
 import { getMaterias, createMateria, updateMateria, deleteMateria, generateClasesForMateria, regenerateClasesForMateria, getCategorias, createCategoria, deleteCategoria } from '@/lib/supabase/queries'
+import { getMockUser, isAdmin } from '@/lib/auth-mock'
 import { Pencil, Trash2, Plus, Users, MapPin, FolderPlus, Folder, X } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import Link from 'next/link'
@@ -36,6 +37,8 @@ const REPETICION_OPTIONS = [
 export default function MateriasPage() {
   const [materias, setMaterias] = useState<any[]>([])
   const [categorias, setCategorias] = useState<any[]>([])
+  const [isUserAdmin, setIsUserAdmin] = useState(false)
+  const [assignedCategoriaIds, setAssignedCategoriaIds] = useState<string[]>([])
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [dialogOpen, setDialogOpen] = useState(false)
@@ -64,12 +67,27 @@ export default function MateriasPage() {
   async function loadData() {
     try {
       setLoading(true)
+      const user = getMockUser()
+      const admin = isAdmin(user)
+      const assigned = user?.categoriaIds || []
+      setIsUserAdmin(admin)
+      setAssignedCategoriaIds(assigned)
+
       const [materiasData, categoriasData] = await Promise.all([
         getMaterias(),
         getCategorias()
       ])
-      setMaterias(materiasData)
-      setCategorias(categoriasData)
+
+      if (admin) {
+        setMaterias(materiasData)
+        setCategorias(categoriasData)
+      } else {
+        // Los usuarios no-admin solo ven sus categorías asignadas y las
+        // materias que pertenecen a ellas.
+        const assignedSet = new Set(assigned)
+        setCategorias(categoriasData.filter((c: any) => assignedSet.has(c.id)))
+        setMaterias(materiasData.filter((m: any) => m.categoria_id && assignedSet.has(m.categoria_id)))
+      }
     } catch (error) {
       console.error('Error loading data:', error)
     } finally {

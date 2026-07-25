@@ -636,3 +636,106 @@ export async function getAlumnoEnrolledByDni(materiaId: string, dni: string) {
   return alumno
 }
 
+// ============================================================
+// Usuarios (ABM - gestionado por el administrador)
+// ============================================================
+
+// Get all usuarios with their assigned categorias
+export async function getUsuarios() {
+  const supabase = createClient()
+  const { data, error } = await supabase
+    .from('usuarios')
+    .select('*, usuario_categorias(categoria_id, categorias(id, nombre, color))')
+    .order('email', { ascending: true })
+  if (error) throw error
+  return (data || []).map((u: any) => ({
+    ...u,
+    categorias: (u.usuario_categorias || [])
+      .map((uc: any) => uc.categorias)
+      .filter(Boolean),
+    categoria_ids: (u.usuario_categorias || []).map((uc: any) => uc.categoria_id),
+  }))
+}
+
+// Get a single usuario by email + password (used for login validation)
+export async function getUsuarioByCredentials(email: string, password: string) {
+  const supabase = createClient()
+  const { data, error } = await supabase
+    .from('usuarios')
+    .select('*, usuario_categorias(categoria_id)')
+    .eq('email', email.toLowerCase())
+    .eq('password', password)
+    .maybeSingle()
+  if (error) throw error
+  if (!data) return null
+  return {
+    ...data,
+    categoria_ids: (data.usuario_categorias || []).map((uc: any) => uc.categoria_id),
+  }
+}
+
+// Set the categorias assigned to a usuario (replaces existing assignments)
+async function setUsuarioCategorias(usuarioId: string, categoriaIds: string[]) {
+  const supabase = createClient()
+  // Remove existing assignments
+  const { error: delError } = await supabase
+    .from('usuario_categorias')
+    .delete()
+    .eq('usuario_id', usuarioId)
+  if (delError) throw delError
+  // Insert new assignments
+  if (categoriaIds.length > 0) {
+    const rows = categoriaIds.map((categoria_id) => ({ usuario_id: usuarioId, categoria_id }))
+    const { error: insError } = await supabase.from('usuario_categorias').insert(rows)
+    if (insError) throw insError
+  }
+}
+
+// Create a new usuario and assign categorias
+export async function createUsuario(
+  email: string,
+  password: string,
+  nombre: string,
+  categoriaIds: string[] = []
+) {
+  const supabase = createClient()
+  const { data, error } = await supabase
+    .from('usuarios')
+    .insert([{ email: email.toLowerCase(), password, nombre }])
+    .select()
+  if (error) throw error
+  const usuario = data[0]
+  await setUsuarioCategorias(usuario.id, categoriaIds)
+  return usuario
+}
+
+// Update a usuario. If password is empty, it is left unchanged.
+export async function updateUsuario(
+  id: string,
+  email: string,
+  password: string,
+  nombre: string,
+  categoriaIds: string[] = []
+) {
+  const supabase = createClient()
+  const updateData: Record<string, any> = { email: email.toLowerCase(), nombre }
+  if (password && password.trim()) {
+    updateData.password = password
+  }
+  const { data, error } = await supabase
+    .from('usuarios')
+    .update(updateData)
+    .eq('id', id)
+    .select()
+  if (error) throw error
+  await setUsuarioCategorias(id, categoriaIds)
+  return data[0]
+}
+
+// Delete a usuario (assignments are removed via ON DELETE CASCADE)
+export async function deleteUsuario(id: string) {
+  const supabase = createClient()
+  const { error } = await supabase.from('usuarios').delete().eq('id', id)
+  if (error) throw error
+}
+
