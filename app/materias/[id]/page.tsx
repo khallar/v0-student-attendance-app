@@ -10,7 +10,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { getAlumnosByMateria, createAlumno, addAlumnoToMateria, removeAlumnoFromMateria, getMaterias, findOrCreateAlumno, isAlumnoInMateria } from '@/lib/supabase/queries'
-import { Upload, Plus, Trash2, AlertCircle, BookOpen, FileSpreadsheet, FileText } from 'lucide-react'
+import { Upload, Plus, Trash2, AlertCircle, BookOpen, FileSpreadsheet, FileText, Download } from 'lucide-react'
 import * as XLSX from 'xlsx'
 import { Badge } from '@/components/ui/badge'
 
@@ -273,6 +273,58 @@ export default function MateriaDetailPage() {
     alert(message)
   }
 
+  function exportToExcel() {
+    if (alumnos.length === 0) {
+      alert('No hay alumnos para exportar')
+      return
+    }
+
+    const headers = ['Nombre', 'Apellido', 'DNI', 'Email']
+    const rows = alumnos.map((alumno) => [
+      alumno.nombre,
+      alumno.apellido,
+      alumno.dni,
+      alumno.email || '',
+    ])
+
+    const ws = XLSX.utils.aoa_to_sheet([headers, ...rows])
+    ws['!cols'] = [{ wch: 20 }, { wch: 20 }, { wch: 15 }, { wch: 25 }]
+
+    const wb = XLSX.utils.book_new()
+    XLSX.utils.book_append_sheet(wb, ws, 'Alumnos')
+    XLSX.writeFile(wb, `Alumnos_${materia.codigo}_${new Date().toISOString().split('T')[0]}.xlsx`)
+  }
+
+  function exportToCSV() {
+    if (alumnos.length === 0) {
+      alert('No hay alumnos para exportar')
+      return
+    }
+
+    const headers = ['Nombre', 'Apellido', 'DNI', 'Email']
+    const rows = alumnos.map((alumno) => [
+      alumno.nombre,
+      alumno.apellido,
+      alumno.dni,
+      alumno.email || '',
+    ])
+
+    const csvContent = [
+      headers.join(','),
+      ...rows.map((row) => row.map((cell) => `"${cell}"`).join(',')),
+    ].join('\n')
+
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' })
+    const link = document.createElement('a')
+    const url = URL.createObjectURL(blob)
+    link.setAttribute('href', url)
+    link.setAttribute('download', `Alumnos_${materia.codigo}_${new Date().toISOString().split('T')[0]}.csv`)
+    link.style.visibility = 'hidden'
+    document.body.appendChild(link)
+    link.click()
+    document.body.removeChild(link)
+  }
+
   if (loading) {
     return (
       <AuthGuard>
@@ -312,6 +364,7 @@ export default function MateriaDetailPage() {
           <TabsList>
             <TabsTrigger value="alumnos">Alumnos</TabsTrigger>
             <TabsTrigger value="importar">Importar</TabsTrigger>
+            <TabsTrigger value="exportar">Exportar</TabsTrigger>
           </TabsList>
 
           <TabsContent value="alumnos">
@@ -568,6 +621,51 @@ export default function MateriaDetailPage() {
                         </div>
                       </div>
                     )}
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          </TabsContent>
+
+          <TabsContent value="exportar">
+            <Card>
+              <CardHeader>
+                <CardTitle>Exportar alumnos</CardTitle>
+                <CardDescription>
+                  Descarga la lista de alumnos en formato Excel o CSV para importarlos en otra materia
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                {alumnos.length === 0 ? (
+                  <div className="flex flex-col items-center justify-center py-10 text-muted-foreground">
+                    <BookOpen className="h-12 w-12 mb-3 opacity-50" />
+                    <p>No hay alumnos para exportar</p>
+                  </div>
+                ) : (
+                  <div className="space-y-6">
+                    <div>
+                      <h3 className="font-medium mb-3">Total de alumnos: {alumnos.length}</h3>
+                      <div className="flex flex-col gap-3">
+                        <Button onClick={exportToExcel} variant="outline" className="justify-start gap-2">
+                          <FileSpreadsheet className="h-4 w-4" />
+                          Descargar como Excel (.xlsx)
+                        </Button>
+                        <Button onClick={exportToCSV} variant="outline" className="justify-start gap-2">
+                          <FileText className="h-4 w-4" />
+                          Descargar como CSV (.csv)
+                        </Button>
+                      </div>
+                    </div>
+                    <div className="bg-muted p-4 rounded-lg text-sm text-muted-foreground">
+                      <p className="font-medium mb-2">Los archivos incluyen las siguientes columnas:</p>
+                      <ul className="list-disc list-inside space-y-1">
+                        <li>Nombre</li>
+                        <li>Apellido</li>
+                        <li>DNI</li>
+                        <li>Email</li>
+                      </ul>
+                      <p className="mt-3 text-xs">Puedes usar estos archivos para importar los alumnos en otra materia.</p>
+                    </div>
                   </div>
                 )}
               </CardContent>
