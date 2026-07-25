@@ -128,6 +128,19 @@ export default function MateriasPage() {
     : materias.filter(m => m.categoria_id === selectedCategoria)
 
   async function handleSave() {
+    // Los usuarios no-admin deben crear/editar materias dentro de una de sus
+    // categorías asignadas.
+    if (!isUserAdmin) {
+      if (!formData.categoria_id) {
+        alert('Debes seleccionar una categoría asignada para la materia.')
+        return
+      }
+      if (!assignedCategoriaIds.includes(formData.categoria_id)) {
+        alert('Solo puedes crear materias dentro de tus categorías asignadas.')
+        return
+      }
+    }
+
     try {
       setSaving(true)
       let materiaId: string
@@ -297,6 +310,7 @@ export default function MateriasPage() {
             <p className="text-muted-foreground">Gestiona las materias y programa sus horarios</p>
           </div>
           <div className="flex gap-2">
+            {isUserAdmin && (
             <Dialog open={categoriaDialogOpen} onOpenChange={setCategoriaDialogOpen}>
               <DialogTrigger asChild>
                 <Button variant="outline">
@@ -339,6 +353,7 @@ export default function MateriasPage() {
                 </div>
               </DialogContent>
             </Dialog>
+            )}
             <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
             <DialogTrigger asChild>
               <Button onClick={handleNewMateria}>
@@ -390,16 +405,18 @@ export default function MateriasPage() {
                     />
                   </div>
                   <div>
-                    <label className="text-sm font-medium">Categoría</label>
+                    <label className="text-sm font-medium">
+                      Categoría{!isUserAdmin && <span className="text-destructive"> *</span>}
+                    </label>
                     <Select 
                       value={formData.categoria_id || 'none'} 
                       onValueChange={(value) => setFormData({ ...formData, categoria_id: value === 'none' ? '' : value })}
                     >
                       <SelectTrigger>
-                        <SelectValue placeholder="Sin categoría" />
+                        <SelectValue placeholder={isUserAdmin ? 'Sin categoría' : 'Selecciona una categoría'} />
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="none">Sin categoría</SelectItem>
+                        {isUserAdmin && <SelectItem value="none">Sin categoría</SelectItem>}
                         {categorias.map((cat) => (
                           <SelectItem key={cat.id} value={cat.id}>
                             <div className="flex items-center gap-2">
@@ -536,23 +553,27 @@ export default function MateriasPage() {
                       <div className="w-2 h-2 rounded-full" style={{ backgroundColor: selectedCategoria === cat.id ? '#fff' : cat.color }} />
                       {cat.nombre} ({count})
                     </Badge>
-                    <button
-                      className="ml-1 text-muted-foreground hover:text-red-600 transition-colors"
-                      onClick={(e) => { e.stopPropagation(); handleDeleteCategoria(cat.id) }}
-                      title="Eliminar categoría"
-                    >
-                      <X className="h-3 w-3" />
-                    </button>
+                    {isUserAdmin && (
+                      <button
+                        className="ml-1 text-muted-foreground hover:text-red-600 transition-colors"
+                        onClick={(e) => { e.stopPropagation(); handleDeleteCategoria(cat.id) }}
+                        title="Eliminar categoría"
+                      >
+                        <X className="h-3 w-3" />
+                      </button>
+                    )}
                   </div>
                 )
               })}
-              <Badge
-                variant={selectedCategoria === 'sin-categoria' ? 'default' : 'outline'}
-                className="cursor-pointer"
-                onClick={() => setSelectedCategoria('sin-categoria')}
-              >
-                Sin categoría ({materias.filter(m => !m.categoria_id).length})
-              </Badge>
+              {isUserAdmin && (
+                <Badge
+                  variant={selectedCategoria === 'sin-categoria' ? 'default' : 'outline'}
+                  className="cursor-pointer"
+                  onClick={() => setSelectedCategoria('sin-categoria')}
+                >
+                  Sin categoría ({materias.filter(m => !m.categoria_id).length})
+                </Badge>
+              )}
             </div>
           </div>
         )}

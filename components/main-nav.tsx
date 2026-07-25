@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { useRouter } from 'next/navigation'
+import { useRouter, usePathname } from 'next/navigation'
 import { getMockUser, clearMockUser } from '@/lib/auth-mock'
 import { Button } from '@/components/ui/button'
 import {
@@ -34,12 +34,15 @@ const ADMIN_NAV_ITEMS: NavItem[] = [
 
 export function MainNav() {
   const router = useRouter()
+  const pathname = usePathname()
   const [user, setUser] = useState<any>(null)
   const [mobileOpen, setMobileOpen] = useState(false)
 
+  // Recargar el usuario en cada cambio de ruta para reflejar
+  // login/logout sin necesidad de recargar la página.
   useEffect(() => {
     setUser(getMockUser())
-  }, [])
+  }, [pathname])
 
   function handleLogout() {
     clearMockUser()
