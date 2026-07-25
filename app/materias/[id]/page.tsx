@@ -119,25 +119,44 @@ export default function MateriaDetailPage() {
     }
   }
 
-  function parseRows(rows: string[][]): { data: any[], errors: string[] } {
+  async function handleRemoveAllAlumnos() {
+    if (!confirm('¿Estás seguro de que deseas borrar TODOS los alumnos de esta materia? Esta acción no se puede deshacer.')) {
+      return
+    }
+    if (!confirm('Última confirmación: ¿Deseas realmente borrar todos los ' + alumnos.length + ' alumnos?')) {
+      return
+    }
+    try {
+      setLoading(true)
+      await Promise.all(alumnos.map((alumno) => removeAlumnoFromMateria(materiaId, alumno.id)))
+      await loadData()
+    } catch (error) {
+      console.error('Error removing all alumnos:', error)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  function parseRows(rows: any[][]): { data: any[], errors: string[] } {
     const errors: string[] = []
     const data: any[] = []
     const enrolledDnis = new Set(alumnos.map((a: any) => a.dni))
     const seenDnis = new Set<string>()
 
     rows.forEach((row, index) => {
-      // Skip empty rows or header row
-      if (row.length === 0 || row.every(cell => !cell?.trim())) return
+      // Convert all cells to string and skip empty rows
+      const stringRow = (row || []).map((cell) => String(cell || '').trim())
+      if (stringRow.length === 0 || stringRow.every(cell => !cell)) return
       
       // Check if it looks like a header row (first row with text like "nombre", "apellido", etc.)
       if (index === 0) {
-        const firstCell = row[0]?.toLowerCase().trim()
+        const firstCell = stringRow[0]?.toLowerCase()
         if (firstCell === 'nombre' || firstCell === 'apellido' || firstCell === 'dni' || firstCell === 'email') {
           return // Skip header
         }
       }
 
-      const [nombre, apellido, dni, email] = row.map((s) => s?.trim() || '')
+      const [nombre, apellido, dni, email] = stringRow
 
       if (!nombre || !apellido || !dni || !email) {
         errors.push(`Fila ${index + 1}: Datos incompletos (se requiere nombre, apellido, dni, email)`)
@@ -190,15 +209,27 @@ export default function MateriaDetailPage() {
         try {
           const data = new Uint8Array(event.target?.result as ArrayBuffer)
           const workbook = XLSX.read(data, { type: 'array' })
+          if (!workbook.SheetNames || workbook.SheetNames.length === 0) {
+            setCsvErrors(['Error: El archivo Excel no contiene hojas.'])
+            setCsvPreview(true)
+            return
+          }
           const firstSheet = workbook.Sheets[workbook.SheetNames[0]]
-          const rows: string[][] = XLSX.utils.sheet_to_json(firstSheet, { header: 1 })
+          const rows: any[][] = XLSX.utils.sheet_to_json(firstSheet, { header: 1 })
+          
+          if (!rows || rows.length === 0) {
+            setCsvErrors(['Error: El archivo Excel está vacío.'])
+            setCsvPreview(true)
+            return
+          }
           
           const result = parseRows(rows)
           setCsvData(result.data)
           setCsvErrors(result.errors)
           setCsvPreview(true)
-        } catch (error) {
-          setCsvErrors(['Error al leer el archivo Excel. Verifica que el formato sea correcto.'])
+        } catch (error: any) {
+          console.error('[v0] Error importando Excel:', error)
+          setCsvErrors(['Error al leer el archivo Excel. Verifica que: sea un archivo .xlsx válido, tenga datos en las columnas esperadas (Nombre, Apellido, DNI, Email).'])
           setCsvPreview(true)
         }
       }
@@ -207,21 +238,33 @@ export default function MateriaDetailPage() {
       // Handle CSV/TXT file
       const reader = new FileReader()
       reader.onload = (event) => {
-        const content = event.target?.result as string
-        const lines = content.trim().split('\n')
-        
-        // Detect separator (semicolon or comma)
-        const firstDataLine = lines.find(line => line.trim().length > 0) || ''
-        const semicolonCount = (firstDataLine.match(/;/g) || []).length
-        const commaCount = (firstDataLine.match(/,/g) || []).length
-        const separator = semicolonCount >= 3 ? ';' : ','
-        
-        const rows = lines.map(line => line.split(separator))
-        
-        const result = parseRows(rows)
-        setCsvData(result.data)
-        setCsvErrors(result.errors)
-        setCsvPreview(true)
+        try {
+          const content = event.target?.result as string
+          const lines = content.trim().split('\n')
+          
+          if (lines.length === 0) {
+            setCsvErrors(['Error: El archivo CSV está vacío.'])
+            setCsvPreview(true)
+            return
+          }
+          
+          // Detect separator (semicolon or comma)
+          const firstDataLine = lines.find(line => line.trim().length > 0) || ''
+          const semicolonCount = (firstDataLine.match(/;/g) || []).length
+          const commaCount = (firstDataLine.match(/,/g) || []).length
+          const separator = semicolonCount >= 3 ? ';' : ','
+          
+          const rows = lines.map(line => line.split(separator))
+          
+          const result = parseRows(rows)
+          setCsvData(result.data)
+          setCsvErrors(result.errors)
+          setCsvPreview(true)
+        } catch (error: any) {
+          console.error('[v0] Error importando CSV:', error)
+          setCsvErrors(['Error al leer el archivo CSV. Verifica que el formato sea correcto.'])
+          setCsvPreview(true)
+        }
       }
       reader.readAsText(file)
     }
@@ -374,13 +417,14 @@ export default function MateriaDetailPage() {
                   <CardTitle>Alumnos inscriptos</CardTitle>
                   <CardDescription>Gestiona los alumnos de esta materia</CardDescription>
                 </div>
-                <Dialog open={dialogOpen} onOpenChange={handleDialogOpenChange}>
-                  <DialogTrigger asChild>
-                    <Button>
-                      <Plus className="mr-2 h-4 w-4" />
-                      Agregar alumno
-                    </Button>
-                  </DialogTrigger>
+                <div className="flex gap-2">
+                  <Dialog open={dialogOpen} onOpenChange={handleDialogOpenChange}>
+                    <DialogTrigger asChild>
+                      <Button>
+                        <Plus className="mr-2 h-4 w-4" />
+                        Agregar alumno
+                      </Button>
+                    </DialogTrigger>
                   <DialogContent>
                     <DialogHeader>
                       <DialogTitle>Agregar alumno a la materia</DialogTitle>
@@ -450,6 +494,17 @@ export default function MateriaDetailPage() {
                     </div>
                   </DialogContent>
                 </Dialog>
+                  {alumnos.length > 0 && (
+                    <Button
+                      variant="destructive"
+                      onClick={handleRemoveAllAlumnos}
+                      disabled={loading}
+                    >
+                      <Trash2 className="mr-2 h-4 w-4" />
+                      Borrar todos
+                    </Button>
+                  )}
+                </div>
               </CardHeader>
               <CardContent>
                 {alumnos.length === 0 ? (
