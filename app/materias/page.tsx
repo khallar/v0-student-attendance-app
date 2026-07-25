@@ -10,6 +10,7 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, Di
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Checkbox } from '@/components/ui/checkbox'
 import { getMaterias, createMateria, updateMateria, deleteMateria, generateClasesForMateria, regenerateClasesForMateria, getCategorias, createCategoria, deleteCategoria } from '@/lib/supabase/queries'
+import { getMockUser, isAdmin } from '@/lib/auth-mock'
 import { Pencil, Trash2, Plus, Users, MapPin, FolderPlus, Folder, X } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import Link from 'next/link'
@@ -36,6 +37,8 @@ const REPETICION_OPTIONS = [
 export default function MateriasPage() {
   const [materias, setMaterias] = useState<any[]>([])
   const [categorias, setCategorias] = useState<any[]>([])
+  const [isUserAdmin, setIsUserAdmin] = useState(false)
+  const [assignedCategoriaIds, setAssignedCategoriaIds] = useState<string[]>([])
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [dialogOpen, setDialogOpen] = useState(false)
@@ -48,6 +51,8 @@ export default function MateriasPage() {
     nombre: '',
     codigo: '',
     profesor: '',
+    docente_ayudante: '',
+    docente_ayudante_2: '',
     repeticion: 'nunca',
     fecha_inicio: '',
     fecha_fin: '',
@@ -64,12 +69,27 @@ export default function MateriasPage() {
   async function loadData() {
     try {
       setLoading(true)
+      const user = getMockUser()
+      const admin = isAdmin(user)
+      const assigned = user?.categoriaIds || []
+      setIsUserAdmin(admin)
+      setAssignedCategoriaIds(assigned)
+
       const [materiasData, categoriasData] = await Promise.all([
         getMaterias(),
         getCategorias()
       ])
-      setMaterias(materiasData)
-      setCategorias(categoriasData)
+
+      if (admin) {
+        setMaterias(materiasData)
+        setCategorias(categoriasData)
+      } else {
+        // Los usuarios no-admin solo ven sus categorías asignadas y las
+        // materias que pertenecen a ellas.
+        const assignedSet = new Set(assigned)
+        setCategorias(categoriasData.filter((c: any) => assignedSet.has(c.id)))
+        setMaterias(materiasData.filter((m: any) => m.categoria_id && assignedSet.has(m.categoria_id)))
+      }
     } catch (error) {
       console.error('Error loading data:', error)
     } finally {
@@ -110,6 +130,19 @@ export default function MateriasPage() {
     : materias.filter(m => m.categoria_id === selectedCategoria)
 
   async function handleSave() {
+    // Los usuarios no-admin deben crear/editar materias dentro de una de sus
+    // categorías asignadas.
+    if (!isUserAdmin) {
+      if (!formData.categoria_id) {
+        alert('Debes seleccionar una categoría asignada para la materia.')
+        return
+      }
+      if (!assignedCategoriaIds.includes(formData.categoria_id)) {
+        alert('Solo puedes crear materias dentro de tus categorías asignadas.')
+        return
+      }
+    }
+
     try {
       setSaving(true)
       let materiaId: string
@@ -128,7 +161,9 @@ export default function MateriasPage() {
           '', // hora_hasta deprecated
           formData.ubicacion,
           formData.horarios_por_dia,
-          formData.categoria_id
+          formData.categoria_id,
+          formData.docente_ayudante,
+          formData.docente_ayudante_2
         )
         materiaId = materia.id
         
@@ -160,7 +195,9 @@ export default function MateriasPage() {
           '', // hora_hasta deprecated
           formData.ubicacion,
           formData.horarios_por_dia,
-          formData.categoria_id
+          formData.categoria_id,
+          formData.docente_ayudante,
+          formData.docente_ayudante_2
         )
         materiaId = materia.id
         
@@ -196,6 +233,8 @@ export default function MateriasPage() {
       nombre: '',
       codigo: '',
       profesor: '',
+      docente_ayudante: '',
+      docente_ayudante_2: '',
       repeticion: 'nunca',
       fecha_inicio: '',
       fecha_fin: '',
@@ -212,6 +251,8 @@ export default function MateriasPage() {
       nombre: materia.nombre,
       codigo: materia.codigo,
       profesor: materia.profesor,
+      docente_ayudante: materia.docente_ayudante || '',
+      docente_ayudante_2: materia.docente_ayudante_2 || '',
       repeticion: materia.repeticion || 'nunca',
       fecha_inicio: materia.fecha_inicio ? materia.fecha_inicio.split('T')[0] : '',
       fecha_fin: materia.fecha_fin ? materia.fecha_fin.split('T')[0] : '',
@@ -279,6 +320,7 @@ export default function MateriasPage() {
             <p className="text-muted-foreground">Gestiona las materias y programa sus horarios</p>
           </div>
           <div className="flex gap-2">
+            {isUserAdmin && (
             <Dialog open={categoriaDialogOpen} onOpenChange={setCategoriaDialogOpen}>
               <DialogTrigger asChild>
                 <Button variant="outline">
@@ -321,6 +363,7 @@ export default function MateriasPage() {
                 </div>
               </DialogContent>
             </Dialog>
+            )}
             <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
             <DialogTrigger asChild>
               <Button onClick={handleNewMateria}>
@@ -356,11 +399,27 @@ export default function MateriasPage() {
                     />
                   </div>
                   <div>
-                    <label className="text-sm font-medium">Profesor</label>
+                    <label className="text-sm font-medium">Profesor responsable</label>
                     <Input
                       value={formData.profesor}
                       onChange={(e) => setFormData({ ...formData, profesor: e.target.value })}
                       placeholder="Ej: Juan Pérez"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-sm font-medium">Docente ayudante</label>
+                    <Input
+                      value={formData.docente_ayudante}
+                      onChange={(e) => setFormData({ ...formData, docente_ayudante: e.target.value })}
+                      placeholder="Ej: María Gómez (opcional)"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-sm font-medium">Docente ayudante 2</label>
+                    <Input
+                      value={formData.docente_ayudante_2}
+                      onChange={(e) => setFormData({ ...formData, docente_ayudante_2: e.target.value })}
+                      placeholder="Ej: Carlos López (opcional)"
                     />
                   </div>
                   <div>
@@ -372,16 +431,18 @@ export default function MateriasPage() {
                     />
                   </div>
                   <div>
-                    <label className="text-sm font-medium">Categoría</label>
+                    <label className="text-sm font-medium">
+                      Categoría{!isUserAdmin && <span className="text-destructive"> *</span>}
+                    </label>
                     <Select 
                       value={formData.categoria_id || 'none'} 
                       onValueChange={(value) => setFormData({ ...formData, categoria_id: value === 'none' ? '' : value })}
                     >
                       <SelectTrigger>
-                        <SelectValue placeholder="Sin categoría" />
+                        <SelectValue placeholder={isUserAdmin ? 'Sin categoría' : 'Selecciona una categoría'} />
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="none">Sin categoría</SelectItem>
+                        {isUserAdmin && <SelectItem value="none">Sin categoría</SelectItem>}
                         {categorias.map((cat) => (
                           <SelectItem key={cat.id} value={cat.id}>
                             <div className="flex items-center gap-2">
@@ -518,23 +579,27 @@ export default function MateriasPage() {
                       <div className="w-2 h-2 rounded-full" style={{ backgroundColor: selectedCategoria === cat.id ? '#fff' : cat.color }} />
                       {cat.nombre} ({count})
                     </Badge>
-                    <button
-                      className="ml-1 text-muted-foreground hover:text-red-600 transition-colors"
-                      onClick={(e) => { e.stopPropagation(); handleDeleteCategoria(cat.id) }}
-                      title="Eliminar categoría"
-                    >
-                      <X className="h-3 w-3" />
-                    </button>
+                    {isUserAdmin && (
+                      <button
+                        className="ml-1 text-muted-foreground hover:text-red-600 transition-colors"
+                        onClick={(e) => { e.stopPropagation(); handleDeleteCategoria(cat.id) }}
+                        title="Eliminar categoría"
+                      >
+                        <X className="h-3 w-3" />
+                      </button>
+                    )}
                   </div>
                 )
               })}
-              <Badge
-                variant={selectedCategoria === 'sin-categoria' ? 'default' : 'outline'}
-                className="cursor-pointer"
-                onClick={() => setSelectedCategoria('sin-categoria')}
-              >
-                Sin categoría ({materias.filter(m => !m.categoria_id).length})
-              </Badge>
+              {isUserAdmin && (
+                <Badge
+                  variant={selectedCategoria === 'sin-categoria' ? 'default' : 'outline'}
+                  className="cursor-pointer"
+                  onClick={() => setSelectedCategoria('sin-categoria')}
+                >
+                  Sin categoría ({materias.filter(m => !m.categoria_id).length})
+                </Badge>
+              )}
             </div>
           </div>
         )}
@@ -561,7 +626,7 @@ export default function MateriasPage() {
                   <TableHead>Nombre</TableHead>
                   <TableHead>Categoría</TableHead>
                   <TableHead>Código</TableHead>
-                  <TableHead>Profesor</TableHead>
+                  <TableHead>Docentes</TableHead>
                   <TableHead>Horario / Ubicacion</TableHead>
                   <TableHead className="text-right">Acciones</TableHead>
                 </TableRow>
@@ -585,7 +650,17 @@ export default function MateriasPage() {
                       )}
                     </TableCell>
                     <TableCell className="text-muted-foreground">{materia.codigo}</TableCell>
-                    <TableCell>{materia.profesor}</TableCell>
+                    <TableCell className="text-sm">
+                      <div className="space-y-0.5">
+                        <div>{materia.profesor}</div>
+                        {materia.docente_ayudante && (
+                          <div className="text-xs text-muted-foreground">{materia.docente_ayudante}</div>
+                        )}
+                        {materia.docente_ayudante_2 && (
+                          <div className="text-xs text-muted-foreground">{materia.docente_ayudante_2}</div>
+                        )}
+                      </div>
+                    </TableCell>
                     <TableCell className="text-sm">
                       {materia.dias_dictado && materia.dias_dictado.length > 0 ? (
                         <div className="space-y-1">

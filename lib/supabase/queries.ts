@@ -61,7 +61,9 @@ export async function createMateria(
   hora_hasta: string = '',
   ubicacion: string = '',
   horarios_por_dia: Record<string, { desde: string; hasta: string }> = {},
-  categoria_id: string = ''
+  categoria_id: string = '',
+  docente_ayudante: string = '',
+  docente_ayudante_2: string = ''
 ) {
   const supabase = createClient()
   const { data, error } = await supabase
@@ -78,7 +80,9 @@ export async function createMateria(
       hora_hasta: hora_hasta || null,
       ubicacion: ubicacion || null,
       horarios_por_dia: Object.keys(horarios_por_dia).length > 0 ? horarios_por_dia : null,
-      categoria_id: categoria_id || null
+      categoria_id: categoria_id || null,
+      docente_ayudante: docente_ayudante || null,
+      docente_ayudante_2: docente_ayudante_2 || null
     }])
     .select('*, categorias(id, nombre, color)')
   if (error) throw error
@@ -98,7 +102,9 @@ export async function updateMateria(
   hora_hasta: string = '',
   ubicacion: string = '',
   horarios_por_dia: Record<string, { desde: string; hasta: string }> = {},
-  categoria_id: string = ''
+  categoria_id: string = '',
+  docente_ayudante: string = '',
+  docente_ayudante_2: string = ''
 ) {
   const supabase = createClient()
   const { data, error } = await supabase
@@ -115,7 +121,9 @@ export async function updateMateria(
       hora_hasta: hora_hasta || null,
       ubicacion: ubicacion || null,
       horarios_por_dia: Object.keys(horarios_por_dia).length > 0 ? horarios_por_dia : null,
-      categoria_id: categoria_id || null
+      categoria_id: categoria_id || null,
+      docente_ayudante: docente_ayudante || null,
+      docente_ayudante_2: docente_ayudante_2 || null
     })
     .eq('id', id)
     .select('*, categorias(id, nombre, color)')
@@ -573,35 +581,38 @@ export async function getInformeByAlumno(alumnoId: string) {
   return materiasConStats
 }
 
-// Activate QR for a clase (sets qr_activo_desde to NOW)
-export async function activateQR(claseId: string) {
+// Activate QR for a clase (sets qr_activo_desde to NOW and stores duration)
+export async function activateQR(claseId: string, durationMinutes: number = 25) {
   const supabase = createClient()
   const { data, error } = await supabase
     .from('clases')
-    .update({ qr_activo_desde: new Date().toISOString() })
+    .update({ 
+      qr_activo_desde: new Date().toISOString(),
+      qr_duracion_minutos: durationMinutes
+    })
     .eq('id', claseId)
     .select()
   if (error) throw error
   return data[0]
 }
 
-// Check if QR is still valid (within 25 minutes of activation)
-export function isQRValid(qr_activo_desde: string | null): boolean {
+// Check if QR is still valid (based on stored duration)
+export function isQRValid(qr_activo_desde: string | null, qr_duracion_minutos: number = 25): boolean {
   if (!qr_activo_desde) return false
   const activatedAt = new Date(qr_activo_desde)
   const now = new Date()
   const diffMs = now.getTime() - activatedAt.getTime()
   const diffMinutes = diffMs / (1000 * 60)
-  return diffMinutes <= 25
+  return diffMinutes <= qr_duracion_minutos
 }
 
-// Get remaining time for QR in seconds
-export function getQRRemainingTime(qr_activo_desde: string | null): number {
+// Get remaining time for QR in seconds (based on stored duration)
+export function getQRRemainingTime(qr_activo_desde: string | null, qr_duracion_minutos: number = 25): number {
   if (!qr_activo_desde) return 0
   const activatedAt = new Date(qr_activo_desde)
   const now = new Date()
   const diffMs = now.getTime() - activatedAt.getTime()
-  const remainingMs = (25 * 60 * 1000) - diffMs // 25 minutes in ms
+  const remainingMs = (qr_duracion_minutos * 60 * 1000) - diffMs
   return Math.max(0, Math.floor(remainingMs / 1000))
 }
 
@@ -631,5 +642,158 @@ export async function getAlumnoEnrolledByDni(materiaId: string, dni: string) {
   if (!enrollment) return null
   
   return alumno
+}
+
+// ============================================================
+// Usuarios (ABM - gestionado por el administrador)
+// ============================================================
+
+// Get all usuarios with their assigned categorias
+export async function getUsuarios() {
+  const supabase = createClient()
+  const { data, error } = await supabase
+    .from('usuarios')
+    .select('*, usuario_categorias(categoria_id, categorias(id, nombre, color))')
+    .order('email', { ascending: true })
+  if (error) throw error
+  return (data || []).map((u: any) => ({
+    ...u,
+    categorias: (u.usuario_categorias || [])
+      .map((uc: any) => uc.categorias)
+      .filter(Boolean),
+    categoria_ids: (u.usuario_categorias || []).map((uc: any) => uc.categoria_id),
+  }))
+}
+
+// Get a single usuario by email + password (used for login validation)
+export async function getUsuarioByCredentials(email: string, password: string) {
+  const supabase = createClient()
+  const { data, error } = await supabase
+    .from('usuarios')
+    .select('*, usuario_categorias(categoria_id)')
+    .eq('email', email.toLowerCase())
+    .eq('password', password)
+    .maybeSingle()
+  if (error) throw error
+  if (!data) return null
+  return {
+    ...data,
+    categoria_ids: (data.usuario_categorias || []).map((uc: any) => uc.categoria_id),
+  }
+}
+
+// Set the categorias assigned to a usuario (replaces existing assignments)
+async function setUsuarioCategorias(usuarioId: string, categoriaIds: string[]) {
+  const supabase = createClient()
+  // Remove existing assignments
+  const { error: delError } = await supabase
+    .from('usuario_categorias')
+    .delete()
+    .eq('usuario_id', usuarioId)
+  if (delError) throw delError
+  // Insert new assignments
+  if (categoriaIds.length > 0) {
+    const rows = categoriaIds.map((categoria_id) => ({ usuario_id: usuarioId, categoria_id }))
+    const { error: insError } = await supabase.from('usuario_categorias').insert(rows)
+    if (insError) throw insError
+  }
+}
+
+// Create a new usuario and assign categorias
+export async function createUsuario(
+  email: string,
+  password: string,
+  nombre: string,
+  categoriaIds: string[] = []
+) {
+  const supabase = createClient()
+  const { data, error } = await supabase
+    .from('usuarios')
+    .insert([{ email: email.toLowerCase(), password, nombre }])
+    .select()
+  if (error) throw error
+  const usuario = data[0]
+  await setUsuarioCategorias(usuario.id, categoriaIds)
+  return usuario
+}
+
+// Update a usuario. If password is empty, it is left unchanged.
+export async function updateUsuario(
+  id: string,
+  email: string,
+  password: string,
+  nombre: string,
+  categoriaIds: string[] = []
+) {
+  const supabase = createClient()
+  const updateData: Record<string, any> = { email: email.toLowerCase(), nombre }
+  if (password && password.trim()) {
+    updateData.password = password
+  }
+  const { data, error } = await supabase
+    .from('usuarios')
+    .update(updateData)
+    .eq('id', id)
+    .select()
+  if (error) throw error
+  await setUsuarioCategorias(id, categoriaIds)
+  return data[0]
+}
+
+// Delete a usuario (assignments are removed via ON DELETE CASCADE)
+export async function deleteUsuario(id: string) {
+  const supabase = createClient()
+  const { error } = await supabase.from('usuarios').delete().eq('id', id)
+  if (error) throw error
+}
+
+// ============================================================
+// Asistencia de docentes (registrada manualmente por el bedel)
+// ============================================================
+
+// Get the list of docentes assigned to a materia (only those with a name)
+export function getDocentesFromMateria(materia: any): { rol: string; label: string; nombre: string }[] {
+  if (!materia) return []
+  const docentes: { rol: string; label: string; nombre: string }[] = []
+  if (materia.profesor && materia.profesor.trim()) {
+    docentes.push({ rol: 'responsable', label: 'Profesor responsable', nombre: materia.profesor.trim() })
+  }
+  if (materia.docente_ayudante && materia.docente_ayudante.trim()) {
+    docentes.push({ rol: 'ayudante', label: 'Docente ayudante', nombre: materia.docente_ayudante.trim() })
+  }
+  if (materia.docente_ayudante_2 && materia.docente_ayudante_2.trim()) {
+    docentes.push({ rol: 'ayudante_2', label: 'Docente ayudante 2', nombre: materia.docente_ayudante_2.trim() })
+  }
+  return docentes
+}
+
+// Get teacher attendance records for a clase
+export async function getAsistenciaDocentes(claseId: string) {
+  const supabase = createClient()
+  const { data, error } = await supabase
+    .from('asistencia_docentes')
+    .select('*')
+    .eq('clase_id', claseId)
+  if (error) throw error
+  return data || []
+}
+
+// Upsert a teacher attendance record for a clase
+export async function upsertAsistenciaDocente(
+  claseId: string,
+  rol: string,
+  nombre: string,
+  presente: boolean
+) {
+  const supabase = createClient()
+  const { data, error } = await supabase
+    .from('asistencia_docentes')
+    .upsert(
+      [{ clase_id: claseId, rol, nombre, presente, updated_at: new Date().toISOString() }],
+      { onConflict: 'clase_id,rol' }
+    )
+    .select()
+  if (error) throw error
+  return data[0]
 }
 

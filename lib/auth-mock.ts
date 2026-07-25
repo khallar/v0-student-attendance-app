@@ -1,11 +1,15 @@
-// Auth mock with localStorage
-import { findBedelByEmail, isEmailAuthorized, type Bedel } from '@/config/bedeles'
+// Auth con validación de email + contraseña.
+// El admin es fijo (config/bedeles). El resto de usuarios se validan
+// contra la tabla `usuarios` de Supabase.
+import { ADMIN_EMAIL, ADMIN_PASSWORD, ADMIN_NOMBRE, isAdminEmail } from '@/config/bedeles'
+import { getUsuarioByCredentials } from '@/lib/supabase/queries'
 
-interface MockUser {
+export interface MockUser {
   id: string
   email: string
   name: string
   rol: 'admin' | 'bedel'
+  categoriaIds: string[] // categorías asignadas (vacío para admin = todas)
 }
 
 const MOCK_USER_KEY = 'bedel_mock_user'
@@ -13,48 +17,60 @@ const MOCK_USER_KEY = 'bedel_mock_user'
 export function getMockUser(): MockUser | null {
   if (typeof window === 'undefined') return null
   const user = localStorage.getItem(MOCK_USER_KEY)
-  return user ? JSON.parse(user) : null
+  if (!user) return null
+  try {
+    const parsed = JSON.parse(user)
+    // Compatibilidad: asegurar campos nuevos
+    return {
+      id: parsed.id,
+      email: parsed.email,
+      name: parsed.name,
+      rol: parsed.rol === 'admin' ? 'admin' : 'bedel',
+      categoriaIds: Array.isArray(parsed.categoriaIds) ? parsed.categoriaIds : [],
+    }
+  } catch {
+    return null
+  }
 }
 
-// Intenta hacer login con un email - retorna el usuario si está autorizado, null si no
-export function loginWithEmail(email: string): MockUser | null {
+// Login con email + contraseña. Retorna el usuario si las credenciales son
+// válidas, o null si no lo son.
+export async function login(email: string, password: string): Promise<MockUser | null> {
   if (typeof window === 'undefined') return null
-  
-  const bedel = findBedelByEmail(email)
-  if (!bedel) {
-    return null // Email no autorizado
+
+  const normalizedEmail = email.trim().toLowerCase()
+
+  // Administrador fijo
+  if (isAdminEmail(normalizedEmail)) {
+    if (password !== ADMIN_PASSWORD) return null
+    const user: MockUser = {
+      id: 'admin',
+      email: ADMIN_EMAIL,
+      name: ADMIN_NOMBRE,
+      rol: 'admin',
+      categoriaIds: [],
+    }
+    localStorage.setItem(MOCK_USER_KEY, JSON.stringify(user))
+    return user
   }
-  
+
+  // Usuarios (bedeles) de la tabla usuarios
+  const usuario = await getUsuarioByCredentials(normalizedEmail, password)
+  if (!usuario) return null
+
   const user: MockUser = {
-    id: bedel.id,
-    email: bedel.email,
-    name: bedel.nombre,
-    rol: bedel.rol,
+    id: usuario.id,
+    email: usuario.email,
+    name: usuario.nombre || usuario.email,
+    rol: 'bedel',
+    categoriaIds: usuario.categoria_ids || [],
   }
   localStorage.setItem(MOCK_USER_KEY, JSON.stringify(user))
   return user
 }
 
-// Mantener compatibilidad con código existente, pero ahora valida contra la config
-export function setMockUser(email: string, name: string): MockUser {
-  if (typeof window === 'undefined') throw new Error('Client side only')
-  
-  // Intentar encontrar el bedel por email
-  const bedel = findBedelByEmail(email)
-  
-  const user: MockUser = {
-    id: bedel?.id || 'bedel_' + Date.now(),
-    email,
-    name: bedel?.nombre || name,
-    rol: bedel?.rol || 'bedel',
-  }
-  localStorage.setItem(MOCK_USER_KEY, JSON.stringify(user))
-  return user
-}
-
-// Verificar si un email puede hacer login
-export function canLogin(email: string): boolean {
-  return isEmailAuthorized(email)
+export function isAdmin(user: MockUser | null): boolean {
+  return user?.rol === 'admin'
 }
 
 export function clearMockUser(): void {

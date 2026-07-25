@@ -32,10 +32,10 @@ export default function AutoAsistenciaPage() {
       setClase(data)
       
       // Check if QR is valid
-      if (!isQRValid(data.qr_activo_desde)) {
+      if (!isQRValid(data.qr_activo_desde, data.qr_duracion_minutos)) {
         setQrExpired(true)
       } else {
-        setRemainingTime(getQRRemainingTime(data.qr_activo_desde))
+        setRemainingTime(getQRRemainingTime(data.qr_activo_desde, data.qr_duracion_minutos))
       }
       
       setLoading(false)
@@ -51,7 +51,7 @@ export default function AutoAsistenciaPage() {
     if (!clase || qrExpired) return
     
     const interval = setInterval(() => {
-      const remaining = getQRRemainingTime(clase.qr_activo_desde)
+      const remaining = getQRRemainingTime(clase.qr_activo_desde, clase.qr_duracion_minutos)
       setRemainingTime(remaining)
       
       if (remaining <= 0) {

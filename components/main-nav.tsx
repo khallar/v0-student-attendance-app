@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { useRouter } from 'next/navigation'
+import { useRouter, usePathname } from 'next/navigation'
 import { getMockUser, clearMockUser } from '@/lib/auth-mock'
 import { Button } from '@/components/ui/button'
 import {
@@ -27,14 +27,22 @@ const NAV_ITEMS: NavItem[] = [
   { label: 'Informes', href: '/informes', icon: '📈' },
 ]
 
+// Items visibles solo para el administrador
+const ADMIN_NAV_ITEMS: NavItem[] = [
+  { label: 'Usuarios', href: '/usuarios', icon: '👥' },
+]
+
 export function MainNav() {
   const router = useRouter()
+  const pathname = usePathname()
   const [user, setUser] = useState<any>(null)
   const [mobileOpen, setMobileOpen] = useState(false)
 
+  // Recargar el usuario en cada cambio de ruta para reflejar
+  // login/logout sin necesidad de recargar la página.
   useEffect(() => {
     setUser(getMockUser())
-  }, [])
+  }, [pathname])
 
   function handleLogout() {
     clearMockUser()
@@ -42,6 +50,8 @@ export function MainNav() {
   }
 
   if (!user) return null
+
+  const navItems = user.rol === 'admin' ? [...NAV_ITEMS, ...ADMIN_NAV_ITEMS] : NAV_ITEMS
 
   return (
     <nav className="sticky top-0 z-50 border-b bg-background">
@@ -53,7 +63,7 @@ export function MainNav() {
 
           {/* Desktop Nav */}
           <div className="hidden md:flex items-center gap-1">
-            {NAV_ITEMS.map((item) => (
+            {navItems.map((item) => (
               <Link
                 key={`desktop-${item.href}`}
                 href={item.href}
@@ -91,7 +101,7 @@ export function MainNav() {
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end" className="w-48">
-                {NAV_ITEMS.map((item) => (
+                {navItems.map((item) => (
                   <DropdownMenuItem key={`mobile-${item.href}`} asChild>
                     <Link href={item.href} className="w-full">
                       {item.icon} {item.label}

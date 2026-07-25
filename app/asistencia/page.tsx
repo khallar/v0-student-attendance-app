@@ -20,11 +20,15 @@ import {
   activateQR,
   isQRValid,
   getQRRemainingTime,
-  getCategorias
+  getCategorias,
+  getDocentesFromMateria,
+  getAsistenciaDocentes,
+  upsertAsistenciaDocente
 } from '@/lib/supabase/queries'
 import { Textarea } from '@/components/ui/textarea'
+import { Checkbox } from '@/components/ui/checkbox'
 import { formatDateShort } from '@/lib/utils-attendance'
-import { ArrowLeft, Download, Plus, Save, Trash2, QrCode, Copy, Check, Link2, Clock, Play, ImageDown, Folder } from 'lucide-react'
+import { ArrowLeft, Download, Plus, Save, Trash2, QrCode, Copy, Check, Link2, Clock, Play, ImageDown, Folder, Users } from 'lucide-react'
 import Link from 'next/link'
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
@@ -60,6 +64,9 @@ function AsistenciaPageContent() {
   const [comentario, setComentario] = useState('')
   const [qrRemainingTime, setQrRemainingTime] = useState(0)
   const [qrActive, setQrActive] = useState(false)
+  const [qrDuration, setQrDuration] = useState('5') // Duration in minutes: '5', '10', '30', or '60'
+  const [docentesAsistencia, setDocentesAsistencia] = useState<Record<string, boolean>>({}) // rol -> presente
+  const [savingDocentes, setSavingDocentes] = useState(false)
 
   // Load materias on mount
   useEffect(() => {
@@ -207,9 +214,10 @@ function AsistenciaPageContent() {
 
   async function loadAsistencias(claseId: string) {
     try {
-      const [data, claseData] = await Promise.all([
+      const [data, claseData, docentesData] = await Promise.all([
         getAsistenciasByClase(claseId),
-        getClaseById(claseId)
+        getClaseById(claseId),
+        getAsistenciaDocentes(claseId)
       ])
       const newAsistencias: Record<string, string> = {}
       alumnos.forEach((alumno: any) => {
@@ -218,11 +226,22 @@ function AsistenciaPageContent() {
       })
       setAsistencias(newAsistencias)
       setComentario(claseData?.comentario || '')
+
+      // Inicializar asistencia de docentes: por defecto todos presentes,
+      // salvo que exista un registro previo guardado por el bedel.
+      const materia = materias.find((m: any) => m.id === selectedMateria)
+      const docentes = getDocentesFromMateria(materia)
+      const newDocentes: Record<string, boolean> = {}
+      docentes.forEach((d) => {
+        const registro = docentesData.find((r: any) => r.rol === d.rol)
+        newDocentes[d.rol] = registro ? registro.presente : true
+      })
+      setDocentesAsistencia(newDocentes)
       
       // Check QR status
-      if (isQRValid(claseData?.qr_activo_desde)) {
+      if (isQRValid(claseData?.qr_activo_desde, claseData?.qr_duracion_minutos)) {
         setQrActive(true)
-        setQrRemainingTime(getQRRemainingTime(claseData.qr_activo_desde))
+        setQrRemainingTime(getQRRemainingTime(claseData.qr_activo_desde, claseData?.qr_duracion_minutos))
       } else {
         setQrActive(false)
         setQrRemainingTime(0)
@@ -330,11 +349,36 @@ function AsistenciaPageContent() {
   async function handleActivateQR() {
     if (!selectedClase) return
     try {
-      await activateQR(selectedClase)
+      const durationMinutes = parseInt(qrDuration, 10)
+      await activateQR(selectedClase, durationMinutes)
       setQrActive(true)
-      setQrRemainingTime(25 * 60) // 25 minutes in seconds
+      setQrRemainingTime(durationMinutes * 60) // Convert to seconds
+      // Guardar la asistencia de docentes al activar el QR (presentes por defecto)
+      await handleSaveDocentes()
     } catch (error) {
       console.error('Error activating QR:', error)
+    }
+  }
+
+  function handleToggleDocente(rol: string, presente: boolean) {
+    setDocentesAsistencia((prev) => ({ ...prev, [rol]: presente }))
+  }
+
+  async function handleSaveDocentes() {
+    if (!selectedClase) return
+    const materia = materias.find((m: any) => m.id === selectedMateria)
+    const docentes = getDocentesFromMateria(materia)
+    if (docentes.length === 0) return
+    try {
+      setSavingDocentes(true)
+      for (const d of docentes) {
+        const presente = docentesAsistencia[d.rol] ?? true
+        await upsertAsistenciaDocente(selectedClase, d.rol, d.nombre, presente)
+      }
+    } catch (error) {
+      console.error('Error saving docentes asistencia:', error)
+    } finally {
+      setSavingDocentes(false)
     }
   }
 
@@ -395,6 +439,7 @@ function AsistenciaPageContent() {
 
   const currentClase = clases.find((c: any) => c.id === selectedClase)
   const currentMateria = materias.find((m: any) => m.id === selectedMateria)
+  const currentDocentes = getDocentesFromMateria(currentMateria)
 
   function handleDownloadReport() {
     if (!currentClase || !currentMateria || alumnos.length === 0) return
@@ -419,8 +464,20 @@ function AsistenciaPageContent() {
       ]
     })
 
+    // Agregar asistencia de docentes al final del reporte
+    const docentes = getDocentesFromMateria(currentMateria)
+    const docenteRows: string[][] = []
+    if (docentes.length > 0) {
+      docenteRows.push(['', '', '', '', ''])
+      docenteRows.push(['DOCENTES', '', '', '', ''])
+      docentes.forEach((d) => {
+        const presente = docentesAsistencia[d.rol] ?? true
+        docenteRows.push([d.label, d.nombre, '', '', presente ? 'Presente' : 'Ausente'])
+      })
+    }
+
     // Create worksheet
-    const ws = XLSX.utils.aoa_to_sheet([headers, ...rows])
+    const ws = XLSX.utils.aoa_to_sheet([headers, ...rows, ...docenteRows])
 
     // Set column widths
     ws['!cols'] = [
@@ -613,7 +670,7 @@ function AsistenciaPageContent() {
                         <DialogHeader>
                           <DialogTitle>Autoasistencia para Alumnos</DialogTitle>
                           <DialogDescription>
-                            Los alumnos tienen 25 minutos para marcar su presente una vez activado el QR
+                            Selecciona el tiempo de vida del QR para que los alumnos marquen su presente
                           </DialogDescription>
                         </DialogHeader>
                         <div className="flex flex-col items-center gap-6 py-6">
@@ -634,17 +691,78 @@ function AsistenciaPageContent() {
                               <p className="text-sm">Presiona el botón para activar</p>
                             </div>
                           )}
+
+                          {/* Asistencia de docentes (solo la registra el bedel manualmente) */}
+                          {currentDocentes.length > 0 && (
+                            <div className="w-full rounded-lg border p-4 space-y-3">
+                              <div className="flex items-center gap-2">
+                                <Users className="h-4 w-4 text-muted-foreground" />
+                                <span className="text-sm font-medium">Asistencia de docentes</span>
+                              </div>
+                              <p className="text-xs text-muted-foreground">
+                                Por defecto todos los docentes figuran como presentes. Desmarca los que estén ausentes.
+                              </p>
+                              <div className="space-y-2">
+                                {currentDocentes.map((d) => (
+                                  <label
+                                    key={d.rol}
+                                    htmlFor={`docente-${d.rol}`}
+                                    className="flex items-center gap-3 rounded-md bg-muted/50 px-3 py-2 cursor-pointer"
+                                  >
+                                    <Checkbox
+                                      id={`docente-${d.rol}`}
+                                      checked={docentesAsistencia[d.rol] ?? true}
+                                      onCheckedChange={(checked) => handleToggleDocente(d.rol, checked === true)}
+                                    />
+                                    <div className="flex-1">
+                                      <div className="text-sm font-medium">{d.nombre}</div>
+                                      <div className="text-xs text-muted-foreground">{d.label}</div>
+                                    </div>
+                                    <span className={`text-xs font-medium ${(docentesAsistencia[d.rol] ?? true) ? 'text-green-600' : 'text-red-600'}`}>
+                                      {(docentesAsistencia[d.rol] ?? true) ? 'Presente' : 'Ausente'}
+                                    </span>
+                                  </label>
+                                ))}
+                              </div>
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                className="w-full"
+                                onClick={handleSaveDocentes}
+                                disabled={savingDocentes}
+                              >
+                                <Save className="mr-2 h-4 w-4" />
+                                {savingDocentes ? 'Guardando...' : 'Guardar asistencia de docentes'}
+                              </Button>
+                            </div>
+                          )}
                           
-                          {/* Activate button */}
+                          {/* Duration selector and Activate button */}
                           {!qrActive && (
-                            <Button 
-                              onClick={handleActivateQR}
-                              className="w-full bg-green-600 hover:bg-green-700"
-                              size="lg"
-                            >
-                              <Play className="mr-2 h-5 w-5" />
-                              Activar QR (25 minutos)
-                            </Button>
+                            <div className="w-full space-y-3">
+                              <div>
+                                <label className="text-sm font-medium block mb-2">Tiempo de vida del QR</label>
+                                <Select value={qrDuration} onValueChange={setQrDuration}>
+                                  <SelectTrigger className="w-full">
+                                    <SelectValue />
+                                  </SelectTrigger>
+                                  <SelectContent>
+                                    <SelectItem value="5">5 minutos</SelectItem>
+                                    <SelectItem value="10">10 minutos</SelectItem>
+                                    <SelectItem value="30">30 minutos</SelectItem>
+                                    <SelectItem value="60">60 minutos</SelectItem>
+                                  </SelectContent>
+                                </Select>
+                              </div>
+                              <Button 
+                                onClick={handleActivateQR}
+                                className="w-full bg-green-600 hover:bg-green-700"
+                                size="lg"
+                              >
+                                <Play className="mr-2 h-5 w-5" />
+                                Activar QR ({qrDuration} minutos)
+                              </Button>
+                            </div>
                           )}
                           
                           {/* QR Code - only show when active */}
