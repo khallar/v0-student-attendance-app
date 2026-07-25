@@ -317,13 +317,17 @@ export default function InformesPage() {
       // Agregar filas de docentes
       docentes.forEach((d) => {
         const row: (string | number)[] = [d.label, d.nombre, '']
+        let presenteCount = 0
         clases.forEach((clase) => {
           const roleMap = docentesAsistenciaMap.get(clase.id)
           const presente = roleMap?.get(d.rol) ?? true
           const estadoText = presente ? 'P' : 'A'
           row.push(estadoText)
+          if (presente) presenteCount++
         })
-        row.push('') // Sin porcentaje para docentes
+        // Calcular porcentaje de asistencia del docente
+        const porcentajeAsistencia = clases.length > 0 ? Math.round((presenteCount / clases.length) * 100) : 0
+        row.push(`${porcentajeAsistencia}%`)
         docentesRows.push(row)
       })
     }
