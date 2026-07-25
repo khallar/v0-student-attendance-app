@@ -119,6 +119,24 @@ export default function MateriaDetailPage() {
     }
   }
 
+  async function handleRemoveAllAlumnos() {
+    if (!confirm('¿Estás seguro de que deseas borrar TODOS los alumnos de esta materia? Esta acción no se puede deshacer.')) {
+      return
+    }
+    if (!confirm('Última confirmación: ¿Deseas realmente borrar todos los ' + alumnos.length + ' alumnos?')) {
+      return
+    }
+    try {
+      setLoading(true)
+      await Promise.all(alumnos.map((alumno) => removeAlumnoFromMateria(materiaId, alumno.id)))
+      await loadData()
+    } catch (error) {
+      console.error('Error removing all alumnos:', error)
+    } finally {
+      setLoading(false)
+    }
+  }
+
   function parseRows(rows: string[][]): { data: any[], errors: string[] } {
     const errors: string[] = []
     const data: any[] = []
@@ -374,13 +392,14 @@ export default function MateriaDetailPage() {
                   <CardTitle>Alumnos inscriptos</CardTitle>
                   <CardDescription>Gestiona los alumnos de esta materia</CardDescription>
                 </div>
-                <Dialog open={dialogOpen} onOpenChange={handleDialogOpenChange}>
-                  <DialogTrigger asChild>
-                    <Button>
-                      <Plus className="mr-2 h-4 w-4" />
-                      Agregar alumno
-                    </Button>
-                  </DialogTrigger>
+                <div className="flex gap-2">
+                  <Dialog open={dialogOpen} onOpenChange={handleDialogOpenChange}>
+                    <DialogTrigger asChild>
+                      <Button>
+                        <Plus className="mr-2 h-4 w-4" />
+                        Agregar alumno
+                      </Button>
+                    </DialogTrigger>
                   <DialogContent>
                     <DialogHeader>
                       <DialogTitle>Agregar alumno a la materia</DialogTitle>
@@ -450,6 +469,17 @@ export default function MateriaDetailPage() {
                     </div>
                   </DialogContent>
                 </Dialog>
+                  {alumnos.length > 0 && (
+                    <Button
+                      variant="destructive"
+                      onClick={handleRemoveAllAlumnos}
+                      disabled={loading}
+                    >
+                      <Trash2 className="mr-2 h-4 w-4" />
+                      Borrar todos
+                    </Button>
+                  )}
+                </div>
               </CardHeader>
               <CardContent>
                 {alumnos.length === 0 ? (
