@@ -25,6 +25,7 @@ import {
   getAsistenciaDocentes,
   upsertAsistenciaDocente
 } from '@/lib/supabase/queries'
+import { getMockUser, isAdmin } from '@/lib/auth-mock'
 import { Textarea } from '@/components/ui/textarea'
 import { Checkbox } from '@/components/ui/checkbox'
 import { formatDateShort } from '@/lib/utils-attendance'
@@ -49,6 +50,8 @@ function AsistenciaPageContent() {
   const [clases, setClases] = useState<any[]>([])
   const [alumnos, setAlumnos] = useState<any[]>([])
   const [asistencias, setAsistencias] = useState<Record<string, string>>({})
+  const [isUserAdmin, setIsUserAdmin] = useState(false)
+  const [assignedCategoriaIds, setAssignedCategoriaIds] = useState<string[]>([])
 
   const [selectedMateria, setSelectedMateria] = useState(materiaIdParam || '')
   const [selectedClase, setSelectedClase] = useState(claseIdParam || '')
@@ -162,12 +165,26 @@ function AsistenciaPageContent() {
   async function loadMaterias() {
     try {
       setLoading(true)
+      const user = getMockUser()
+      const admin = isAdmin(user)
+      const assigned = user?.categoriaIds || []
+      setIsUserAdmin(admin)
+      setAssignedCategoriaIds(assigned)
+
       const [materiasData, categoriasData] = await Promise.all([
         getMaterias(),
         getCategorias()
       ])
-      setMaterias(materiasData)
-      setCategorias(categoriasData)
+
+      if (admin) {
+        setMaterias(materiasData)
+        setCategorias(categoriasData)
+      } else {
+        // Los usuarios no-admin solo ven sus categorías asignadas
+        const assignedSet = new Set(assigned)
+        setCategorias(categoriasData.filter((c: any) => assignedSet.has(c.id)))
+        setMaterias(materiasData.filter((m: any) => m.categoria_id && assignedSet.has(m.categoria_id)))
+      }
       if (materiaIdParam) {
         setSelectedMateria(materiaIdParam)
       }

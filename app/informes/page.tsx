@@ -19,6 +19,7 @@ import {
   getAsistenciaDocentes,
   getDocentesFromMateria,
 } from '@/lib/supabase/queries'
+import { getMockUser, isAdmin } from '@/lib/auth-mock'
 import { AlertCircle, Users, BookOpen, Calendar, TrendingUp, CheckCircle, Download, Folder, Search, Filter, X } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -69,6 +70,8 @@ export default function InformesPage() {
   const [alumnos, setAlumnos] = useState<any[]>([])
   const [asistenciasMap, setAsistenciasMap] = useState<Map<string, Map<string, string>>>(new Map())
   const [loadingMateria, setLoadingMateria] = useState(false)
+  const [isUserAdmin, setIsUserAdmin] = useState(false)
+  const [assignedCategoriaIds, setAssignedCategoriaIds] = useState<string[]>([])
 
   // --- Tab Por Alumno ---
   const [allAlumnos, setAllAlumnos] = useState<any[]>([])
@@ -88,12 +91,26 @@ export default function InformesPage() {
 
   async function loadInit() {
     try {
+      const user = getMockUser()
+      const admin = isAdmin(user)
+      const assigned = user?.categoriaIds || []
+      setIsUserAdmin(admin)
+      setAssignedCategoriaIds(assigned)
+
       const [materiasData, categoriasData] = await Promise.all([
         getMaterias(),
         getCategorias()
       ])
-      setMaterias(materiasData)
-      setCategorias(categoriasData)
+
+      if (admin) {
+        setMaterias(materiasData)
+        setCategorias(categoriasData)
+      } else {
+        // Los usuarios no-admin solo ven sus categorías asignadas
+        const assignedSet = new Set(assigned)
+        setCategorias(categoriasData.filter((c: any) => assignedSet.has(c.id)))
+        setMaterias(materiasData.filter((m: any) => m.categoria_id && assignedSet.has(m.categoria_id)))
+      }
     } catch (error) {
       console.error('Error loading data:', error)
     }
