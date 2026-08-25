@@ -815,8 +815,39 @@ export async function getAsistenciaDocentes(claseId: string) {
     .select('*')
     .eq('clase_id', claseId)
   if (error) throw error
-  return data || []
+  return data[0]
 }
+
+// Fetch, in batch, all clases (id, materia_id, fecha) for the given materias plus
+// the teacher-attendance records for those clases. Used to build the docentes report
+// without issuing one request per clase.
+export async function getClasesConAsistenciaDocentes(materiaIds: string[]) {
+  const supabase = createClient()
+  if (!materiaIds || materiaIds.length === 0) return { clases: [], asistencias: [] }
+
+  const { data: clases, error: clasesError } = await supabase
+    .from('clases')
+    .select('id, materia_id, fecha')
+    .in('materia_id', materiaIds)
+  if (clasesError) throw clasesError
+
+  const claseIds = (clases || []).map((c: any) => c.id)
+  const asistencias: any[] = []
+  // Chunk clase ids to keep the `in(...)` filter within safe URL limits.
+  const chunkSize = 200
+  for (let i = 0; i < claseIds.length; i += chunkSize) {
+    const chunk = claseIds.slice(i, i + chunkSize)
+    const { data, error } = await supabase
+      .from('asistencia_docentes')
+      .select('clase_id, rol, presente')
+      .in('clase_id', chunk)
+    if (error) throw error
+    if (data) asistencias.push(...data)
+  }
+
+  return { clases: clases || [], asistencias }
+}
+
 
 // Upsert a teacher attendance record for a clase
 export async function upsertAsistenciaDocente(
