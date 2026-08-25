@@ -173,6 +173,46 @@ export async function createAlumno(nombre: string, apellido: string, dni: string
   return data[0]
 }
 
+// Update an alumno's personal data (ABM - gestionado por el administrador)
+export async function updateAlumno(
+  id: string,
+  nombre: string,
+  apellido: string,
+  dni: string,
+  email: string
+) {
+  const supabase = createClient()
+  const { data, error } = await supabase
+    .from('alumnos')
+    .update({ nombre, apellido, dni, email })
+    .eq('id', id)
+    .select()
+  if (error) throw error
+  return data[0]
+}
+
+// Delete an alumno and all their related records (enrollments + attendance).
+// Related rows are removed explicitly so the operation works regardless of
+// whether ON DELETE CASCADE is configured in the database.
+export async function deleteAlumno(id: string) {
+  const supabase = createClient()
+  // Remove attendance records first
+  const { error: asisError } = await supabase
+    .from('asistencias')
+    .delete()
+    .eq('alumno_id', id)
+  if (asisError) throw asisError
+  // Remove enrollments
+  const { error: enrollError } = await supabase
+    .from('materia_alumnos')
+    .delete()
+    .eq('alumno_id', id)
+  if (enrollError) throw enrollError
+  // Remove the alumno
+  const { error } = await supabase.from('alumnos').delete().eq('id', id)
+  if (error) throw error
+}
+
 export async function addAlumnoToMateria(materiaId: string, alumnoId: string) {
   const supabase = createClient()
   const { data, error } = await supabase
