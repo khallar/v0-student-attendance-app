@@ -18,13 +18,23 @@ import {
   getCategorias,
   getAsistenciaDocentes,
   getDocentesFromMateria,
+  getClasesConAsistenciaDocentes,
 } from '@/lib/supabase/queries'
 import { getMockUser, isAdmin } from '@/lib/auth-mock'
-import { AlertCircle, Users, BookOpen, Calendar, TrendingUp, CheckCircle, Download, Folder, Search, Filter, X } from 'lucide-react'
+import { AlertCircle, Users, BookOpen, Calendar, TrendingUp, CheckCircle, Download, Folder, Search, Filter, X, GraduationCap } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import * as XLSX from 'xlsx'
 import { PieChart, Pie, Cell, Legend, Tooltip, ResponsiveContainer } from 'recharts'
+
+// Normalize a name for grouping (accent- and case-insensitive)
+function normalizeName(s: string) {
+  return (s || '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .trim()
+}
 
 function formatDateShort(fecha: string) {
   if (!fecha) return ''
@@ -84,6 +94,14 @@ export default function InformesPage() {
   const [searchAlumno, setSearchAlumno] = useState('')
   const [filterEstado, setFilterEstado] = useState<'todos' | 'regular' | 'libre'>('todos')
   const [filterMateria, setFilterMateria] = useState<string>('todas')
+
+  // --- Tab Por Docente ---
+  const [selectedDocente, setSelectedDocente] = useState<string>('todos')
+  const [selectedDocenteMateria, setSelectedDocenteMateria] = useState<string>('todas')
+  const [docenteClases, setDocenteClases] = useState<any[]>([])
+  const [docenteAsistencias, setDocenteAsistencias] = useState<any[]>([])
+  const [docenteDataLoaded, setDocenteDataLoaded] = useState(false)
+  const [loadingDocentes, setLoadingDocentes] = useState(false)
 
   useEffect(() => {
     loadInit()
@@ -197,6 +215,24 @@ export default function InformesPage() {
     }
   }
 
+  // Load clases + teacher-attendance for all visible materias (Por Docente tab)
+  async function loadDocentesData() {
+    if (docenteDataLoaded || materias.length === 0) return
+    try {
+      setLoadingDocentes(true)
+      const { clases, asistencias } = await getClasesConAsistenciaDocentes(
+        materias.map((m) => m.id)
+      )
+      setDocenteClases(clases)
+      setDocenteAsistencias(asistencias)
+      setDocenteDataLoaded(true)
+    } catch (error) {
+      console.error('Error loading docentes data:', error)
+    } finally {
+      setLoadingDocentes(false)
+    }
+  }
+
   // --- Helpers for Por Materia ---
   // Filter clases up to today for statistics calculation
   const today = new Date()
@@ -281,6 +317,91 @@ export default function InformesPage() {
   const porcentajeTotalAlumno = totalClasesAlumno === 0 ? 0 : Math.round((totalPresentesAlumno / totalClasesAlumno) * 100)
 
   const currentMateria = materias.find((m) => m.id === selectedMateria)
+
+  // --- Por Docente: build docentes list and report rows ---
+  // Group docentes across all visible materias by normalized name. A single
+  // teacher may appear in several materias with different roles.
+  const docentesList = (() => {
+    const map = new Map<
+      string,
+      { key: string; nombre: string; materias: { materiaId: string; rol: string; label: string; materia: any }[] }
+    >()
+    materias.forEach((materia) => {
+      getDocentesFromMateria(materia).forEach((d) => {
+        const key = normalizeName(d.nombre)
+        if (!key) return
+        if (!map.has(key)) map.set(key, { key, nombre: d.nombre, materias: [] })
+        map.get(key)!.materias.push({ materiaId: materia.id, rol: d.rol, label: d.label, materia })
+      })
+    })
+    return Array.from(map.values()).sort((a, b) => a.nombre.localeCompare(b.nombre))
+  })()
+
+  // Materias associated with the selected docente (second dropdown)
+  const docenteMateriasOptions =
+    selectedDocente === 'todos'
+      ? []
+      : docentesList.find((d) => d.key === selectedDocente)?.materias || []
+
+  // Build one row per docente/materia combination, counting only clases dadas
+  // hasta hoy (fecha <= today). "Asistencia registrada" = clase donde el docente
+  // fue marcado presente.
+  const docenteRows = (() => {
+    const groups =
+      selectedDocente === 'todos' ? docentesList : docentesList.filter((d) => d.key === selectedDocente)
+
+    // clases (up to today) grouped by materia
+    const clasesByMateria = new Map<string, any[]>()
+    docenteClases.forEach((c) => {
+      if (new Date(c.fecha) > today) return
+      if (!clasesByMateria.has(c.materia_id)) clasesByMateria.set(c.materia_id, [])
+      clasesByMateria.get(c.materia_id)!.push(c)
+    })
+    // presente lookup keyed by clase + rol
+    const asistenciaLookup = new Map<string, boolean>()
+    docenteAsistencias.forEach((a) => {
+      asistenciaLookup.set(`${a.clase_id}::${a.rol}`, a.presente)
+    })
+
+    const rows: {
+      docente: string
+      materia: string
+      codigo: string
+      label: string
+      clasesDadas: number
+      clasesRegistradas: number
+      porcentaje: number
+    }[] = []
+
+    groups.forEach((group) => {
+      group.materias.forEach((entry) => {
+        if (
+          selectedDocente !== 'todos' &&
+          selectedDocenteMateria !== 'todas' &&
+          entry.materiaId !== selectedDocenteMateria
+        )
+          return
+        const clases = clasesByMateria.get(entry.materiaId) || []
+        const clasesDadas = clases.length
+        let clasesRegistradas = 0
+        clases.forEach((c) => {
+          if (asistenciaLookup.get(`${c.id}::${entry.rol}`) === true) clasesRegistradas++
+        })
+        const porcentaje = clasesDadas === 0 ? 0 : Math.round((clasesRegistradas / clasesDadas) * 100)
+        rows.push({
+          docente: group.nombre,
+          materia: entry.materia.nombre,
+          codigo: entry.materia.codigo,
+          label: entry.label,
+          clasesDadas,
+          clasesRegistradas,
+          porcentaje,
+        })
+      })
+    })
+
+    return rows.sort((a, b) => a.docente.localeCompare(b.docente) || a.materia.localeCompare(b.materia))
+  })()
 
   // Export Excel function
   async function exportToExcel() {
@@ -378,6 +499,7 @@ export default function InformesPage() {
 
         <Tabs defaultValue="por-materia" onValueChange={(v) => {
           if (v === 'por-alumno') loadAlumnosList()
+          if (v === 'por-docente') loadDocentesData()
         }}>
           <TabsList className="mb-6">
             <TabsTrigger value="por-materia" className="gap-2">
@@ -387,6 +509,10 @@ export default function InformesPage() {
             <TabsTrigger value="por-alumno" className="gap-2">
               <Users className="h-4 w-4" />
               Por Alumno
+            </TabsTrigger>
+            <TabsTrigger value="por-docente" className="gap-2">
+              <GraduationCap className="h-4 w-4" />
+              Por Docente
             </TabsTrigger>
           </TabsList>
 
@@ -886,6 +1012,133 @@ export default function InformesPage() {
 
               </div>{/* end panel derecho */}
             </div>{/* end grid */}
+          </TabsContent>
+
+          {/* ======================== TAB: Por Docente ======================== */}
+          <TabsContent value="por-docente">
+            <Card className="mb-6">
+              <CardHeader>
+                <CardTitle>Informe de Docentes</CardTitle>
+                <CardDescription>
+                  Selecciona un docente y, opcionalmente, una de sus materias. El porcentaje se calcula
+                  solo sobre las clases dictadas hasta hoy.
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <div className="flex flex-col sm:flex-row gap-4">
+                  {/* Selector de docente */}
+                  <div className="flex-1">
+                    <label className="text-sm font-medium text-muted-foreground mb-1.5 block">Docente</label>
+                    <Select
+                      value={selectedDocente}
+                      onValueChange={(v) => {
+                        setSelectedDocente(v)
+                        setSelectedDocenteMateria('todas')
+                      }}
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="Selecciona un docente..." />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="todos">Todos los docentes</SelectItem>
+                        {docentesList.map((d) => (
+                          <SelectItem key={d.key} value={d.key}>
+                            {d.nombre}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  {/* Selector de materia (solo cuando hay un docente seleccionado) */}
+                  <div className="flex-1">
+                    <label className="text-sm font-medium text-muted-foreground mb-1.5 block">Materia</label>
+                    <Select
+                      value={selectedDocenteMateria}
+                      onValueChange={setSelectedDocenteMateria}
+                      disabled={selectedDocente === 'todos'}
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="Todas las materias" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="todas">Todas las materias</SelectItem>
+                        {docenteMateriasOptions.map((entry) => (
+                          <SelectItem key={`${entry.materiaId}-${entry.rol}`} value={entry.materiaId}>
+                            {entry.materia.nombre} — {entry.materia.codigo}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+
+            {loadingDocentes ? (
+              <div className="flex justify-center py-12 text-muted-foreground">Cargando datos...</div>
+            ) : docentesList.length === 0 ? (
+              <div className="flex flex-col items-center justify-center py-16 text-muted-foreground gap-2">
+                <GraduationCap className="h-10 w-10 opacity-30" />
+                <p>No hay docentes cargados en las materias</p>
+              </div>
+            ) : (
+              <Card>
+                <CardHeader>
+                  <CardTitle className="text-lg">Resumen de asistencia docente</CardTitle>
+                  <CardDescription>
+                    % asistencia = (clases con asistencia registrada / clases dadas hasta hoy) × 100
+                  </CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <div className="overflow-x-auto">
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead>Docente</TableHead>
+                          <TableHead>Materia</TableHead>
+                          <TableHead className="text-center">Clases dadas hasta hoy</TableHead>
+                          <TableHead className="text-center">Clases con asistencia registrada</TableHead>
+                          <TableHead className="text-right w-52">% de asistencia</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {docenteRows.length === 0 ? (
+                          <TableRow>
+                            <TableCell colSpan={5} className="text-center text-muted-foreground py-6">
+                              Sin resultados para la selección actual
+                            </TableCell>
+                          </TableRow>
+                        ) : (
+                          docenteRows.map((row, i) => (
+                            <TableRow key={`${row.docente}-${row.codigo}-${i}`}>
+                              <TableCell className="font-medium">
+                                {row.docente}
+                                <span className="block text-xs text-muted-foreground font-normal">{row.label}</span>
+                              </TableCell>
+                              <TableCell>
+                                {row.materia}
+                                <span className="block text-xs text-muted-foreground">{row.codigo}</span>
+                              </TableCell>
+                              <TableCell className="text-center font-semibold">{row.clasesDadas}</TableCell>
+                              <TableCell className="text-center font-semibold">{row.clasesRegistradas}</TableCell>
+                              <TableCell>
+                                <div className="flex items-center justify-end gap-2">
+                                  <Progress value={row.porcentaje} className="w-24 h-2" />
+                                  <span className={`font-semibold w-10 text-right ${getPorcentajeColor(row.porcentaje)}`}>
+                                    {row.porcentaje}%
+                                  </span>
+                                </div>
+                              </TableCell>
+                            </TableRow>
+                          ))
+                        )}
+                      </TableBody>
+                    </Table>
+                  </div>
+                </CardContent>
+              </Card>
+            )}
           </TabsContent>
         </Tabs>
       </div>

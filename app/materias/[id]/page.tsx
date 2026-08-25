@@ -137,6 +137,27 @@ export default function MateriaDetailPage() {
     }
   }
 
+  // Decode a file's raw bytes into text, auto-detecting the encoding so that
+  // accents (á, é, í, ó, ú) and ñ are preserved. Tries UTF-8 first (with a
+  // strict pass to detect invalid byte sequences) and falls back to
+  // Windows-1252, the encoding Excel uses for Spanish CSV exports.
+  function decodeText(buffer: ArrayBuffer): string {
+    const bytes = new Uint8Array(buffer)
+
+    // Strip a UTF-8 BOM if present and decode as UTF-8.
+    if (bytes.length >= 3 && bytes[0] === 0xef && bytes[1] === 0xbb && bytes[2] === 0xbf) {
+      return new TextDecoder('utf-8').decode(bytes.subarray(3))
+    }
+
+    // Try strict UTF-8: if the bytes are valid UTF-8, this is the safest result.
+    try {
+      return new TextDecoder('utf-8', { fatal: true }).decode(bytes)
+    } catch {
+      // Not valid UTF-8 (likely Windows-1252/Latin-1 from Excel). Decode accordingly.
+      return new TextDecoder('windows-1252').decode(bytes)
+    }
+  }
+
   function parseRows(rows: any[][]): { data: any[], errors: string[] } {
     const errors: string[] = []
     const data: any[] = []
@@ -239,8 +260,12 @@ export default function MateriaDetailPage() {
       const reader = new FileReader()
       reader.onload = (event) => {
         try {
-          const content = event.target?.result as string
-          const lines = content.trim().split('\n')
+          // Read as raw bytes so we can detect the correct encoding.
+          // Excel (Windows, es-ES) often exports CSV as Windows-1252/Latin-1,
+          // which corrupts accents and ñ if decoded as UTF-8.
+          const buffer = event.target?.result as ArrayBuffer
+          const content = decodeText(buffer)
+          const lines = content.trim().split(/\r?\n/)
           
           if (lines.length === 0) {
             setCsvErrors(['Error: El archivo CSV está vacío.'])
@@ -266,7 +291,7 @@ export default function MateriaDetailPage() {
           setCsvPreview(true)
         }
       }
-      reader.readAsText(file)
+      reader.readAsArrayBuffer(file)
     }
     
     // Reset file input
@@ -357,7 +382,9 @@ export default function MateriaDetailPage() {
       ...rows.map((row) => row.map((cell) => `"${cell}"`).join(',')),
     ].join('\n')
 
-    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' })
+    // Prepend a UTF-8 BOM so Excel opens the file with the correct encoding
+    // and displays accents (á, é, í, ó, ú) and ñ properly.
+    const blob = new Blob(['\ufeff' + csvContent], { type: 'text/csv;charset=utf-8;' })
     const link = document.createElement('a')
     const url = URL.createObjectURL(blob)
     link.setAttribute('href', url)

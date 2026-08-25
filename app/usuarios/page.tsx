@@ -10,6 +10,8 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Checkbox } from '@/components/ui/checkbox'
 import { Badge } from '@/components/ui/badge'
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { AlumnosAbm } from '@/components/alumnos-abm'
 import { getUsuarios, createUsuario, updateUsuario, deleteUsuario, getCategorias } from '@/lib/supabase/queries'
 import { getMockUser, isAdmin } from '@/lib/auth-mock'
 import { Pencil, Trash2, Plus, UserPlus, Folder, AlertCircle } from 'lucide-react'
@@ -149,90 +151,107 @@ export default function UsuariosPage() {
   return (
     <AuthGuard>
       <div className="mx-auto max-w-6xl p-4 sm:p-6 lg:p-8">
-        <div className="mb-6 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-          <div>
-            <h1 className="text-3xl font-bold">Usuarios</h1>
-            <p className="text-muted-foreground">
-              Crea usuarios y asígnalos a una o más categorías. Cada usuario solo podrá gestionar
-              materias dentro de sus categorías.
-            </p>
-          </div>
-          <Button onClick={handleNew}>
-            <UserPlus className="mr-2 h-4 w-4" />
-            Nuevo usuario
-          </Button>
+        <div className="mb-6">
+          <h1 className="text-3xl font-bold">Usuarios</h1>
+          <p className="text-muted-foreground">
+            Gestiona los bedeles del sistema y el padrón de alumnos.
+          </p>
         </div>
 
-        {loading ? (
-          <div className="flex justify-center py-8">
-            <div className="text-muted-foreground">Cargando usuarios...</div>
-          </div>
-        ) : usuarios.length === 0 ? (
-          <Card>
-            <CardContent className="flex flex-col items-center justify-center py-8">
-              <p className="text-muted-foreground">No hay usuarios creados aún</p>
-              <Button className="mt-4" onClick={handleNew}>
-                <Plus className="mr-2 h-4 w-4" />
-                Crear primer usuario
+        <Tabs defaultValue="bedeles">
+          <TabsList className="mb-6">
+            <TabsTrigger value="bedeles">Bedeles</TabsTrigger>
+            <TabsTrigger value="alumnos">Alumnos</TabsTrigger>
+          </TabsList>
+
+          <TabsContent value="bedeles">
+            <div className="mb-4 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+              <p className="text-sm text-muted-foreground">
+                Crea usuarios y asígnalos a una o más categorías. Cada usuario solo podrá gestionar
+                materias dentro de sus categorías.
+              </p>
+              <Button onClick={handleNew} className="shrink-0">
+                <UserPlus className="mr-2 h-4 w-4" />
+                Nuevo usuario
               </Button>
-            </CardContent>
-          </Card>
-        ) : (
-          <Card>
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Nombre</TableHead>
-                  <TableHead>Email</TableHead>
-                  <TableHead>Categorías asignadas</TableHead>
-                  <TableHead className="text-right">Acciones</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {usuarios.map((usuario) => (
-                  <TableRow key={usuario.id}>
-                    <TableCell className="font-medium">{usuario.nombre || '-'}</TableCell>
-                    <TableCell className="text-muted-foreground">{usuario.email}</TableCell>
-                    <TableCell>
-                      {usuario.categorias && usuario.categorias.length > 0 ? (
-                        <div className="flex flex-wrap gap-1">
-                          {usuario.categorias.map((cat: any) => (
-                            <Badge
-                              key={cat.id}
-                              variant="outline"
-                              className="text-xs"
-                              style={{ borderColor: cat.color, color: cat.color }}
+            </div>
+
+            {loading ? (
+              <div className="flex justify-center py-8">
+                <div className="text-muted-foreground">Cargando usuarios...</div>
+              </div>
+            ) : usuarios.length === 0 ? (
+              <Card>
+                <CardContent className="flex flex-col items-center justify-center py-8">
+                  <p className="text-muted-foreground">No hay usuarios creados aún</p>
+                  <Button className="mt-4" onClick={handleNew}>
+                    <Plus className="mr-2 h-4 w-4" />
+                    Crear primer usuario
+                  </Button>
+                </CardContent>
+              </Card>
+            ) : (
+              <Card>
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Nombre</TableHead>
+                      <TableHead>Email</TableHead>
+                      <TableHead>Categorías asignadas</TableHead>
+                      <TableHead className="text-right">Acciones</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {usuarios.map((usuario) => (
+                      <TableRow key={usuario.id}>
+                        <TableCell className="font-medium">{usuario.nombre || '-'}</TableCell>
+                        <TableCell className="text-muted-foreground">{usuario.email}</TableCell>
+                        <TableCell>
+                          {usuario.categorias && usuario.categorias.length > 0 ? (
+                            <div className="flex flex-wrap gap-1">
+                              {usuario.categorias.map((cat: any) => (
+                                <Badge
+                                  key={cat.id}
+                                  variant="outline"
+                                  className="text-xs"
+                                  style={{ borderColor: cat.color, color: cat.color }}
+                                >
+                                  <Folder className="h-3 w-3 mr-1" style={{ fill: cat.color }} />
+                                  {cat.nombre}
+                                </Badge>
+                              ))}
+                            </div>
+                          ) : (
+                            <span className="text-muted-foreground text-xs">Sin categorías</span>
+                          )}
+                        </TableCell>
+                        <TableCell className="text-right">
+                          <div className="flex justify-end gap-2">
+                            <Button variant="ghost" size="sm" onClick={() => handleEdit(usuario)}>
+                              <Pencil className="h-4 w-4" />
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="text-red-600 hover:text-red-700"
+                              onClick={() => handleDelete(usuario.id)}
                             >
-                              <Folder className="h-3 w-3 mr-1" style={{ fill: cat.color }} />
-                              {cat.nombre}
-                            </Badge>
-                          ))}
-                        </div>
-                      ) : (
-                        <span className="text-muted-foreground text-xs">Sin categorías</span>
-                      )}
-                    </TableCell>
-                    <TableCell className="text-right">
-                      <div className="flex justify-end gap-2">
-                        <Button variant="ghost" size="sm" onClick={() => handleEdit(usuario)}>
-                          <Pencil className="h-4 w-4" />
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          className="text-red-600 hover:text-red-700"
-                          onClick={() => handleDelete(usuario.id)}
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </Button>
-                      </div>
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          </Card>
-        )}
+                              <Trash2 className="h-4 w-4" />
+                            </Button>
+                          </div>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </Card>
+            )}
+          </TabsContent>
+
+          <TabsContent value="alumnos">
+            <AlumnosAbm />
+          </TabsContent>
+        </Tabs>
 
         <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
           <DialogContent className="max-h-[90vh] overflow-y-auto">
