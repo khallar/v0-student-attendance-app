@@ -1,11 +1,13 @@
 'use client'
 
-import { useState, useEffect, Suspense } from 'react'
+import { useState, useEffect, useMemo, Suspense } from 'react'
+import { es } from 'date-fns/locale'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { AuthGuard } from '@/components/auth-guard'
 import { AsistenciaGrid } from '@/components/asistencia-grid'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
+import { Calendar } from '@/components/ui/calendar'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { 
   getClasesByMateria, 
@@ -38,6 +40,43 @@ import QRCode from 'react-qr-code'
 import { createClient } from '@/lib/supabase/client'
 import * as XLSX from 'xlsx'
 
+// Devuelve la fecha local (a medianoche) de una clase, para que coincida con lo que se muestra
+function toLocalDay(fecha: string | Date): Date {
+  const d = new Date(fecha)
+  return new Date(d.getFullYear(), d.getMonth(), d.getDate())
+}
+
+// Clave estable por día (yyyy-mm-dd en horario local)
+function dayKey(date: Date): string {
+  return `${date.getFullYear()}-${date.getMonth()}-${date.getDate()}`
+}
+
+// Formato largo y legible de una fecha
+function formatDateLong(fecha: string | Date): string {
+  return new Date(fecha).toLocaleDateString('es-AR', {
+    weekday: 'long',
+    day: '2-digit',
+    month: 'long',
+    year: 'numeric',
+  })
+}
+
+// Devuelve el id de la clase más próxima a hoy (menor diferencia absoluta)
+function getNearestClaseId(list: any[]): string {
+  if (!list.length) return ''
+  const now = Date.now()
+  let best = list[0]
+  let bestDiff = Math.abs(new Date(best.fecha).getTime() - now)
+  for (const c of list) {
+    const diff = Math.abs(new Date(c.fecha).getTime() - now)
+    if (diff < bestDiff) {
+      best = c
+      bestDiff = diff
+    }
+  }
+  return best.id
+}
+
 function AsistenciaPageContent() {
   const router = useRouter()
   const searchParams = useSearchParams()
@@ -55,6 +94,7 @@ function AsistenciaPageContent() {
 
   const [selectedMateria, setSelectedMateria] = useState(materiaIdParam || '')
   const [selectedClase, setSelectedClase] = useState(claseIdParam || '')
+  const [calendarMonth, setCalendarMonth] = useState<Date>(new Date())
   
   const [loading, setLoading] = useState(false)
   const [saving, setSaving] = useState(false)
@@ -207,7 +247,18 @@ function AsistenciaPageContent() {
       const data = await getClasesByMateria(materiaId)
       setClases(data)
       if (claseIdParam && data.find((c: any) => c.id === claseIdParam)) {
+        // Respetar la clase indicada por la URL
+        const clase = data.find((c: any) => c.id === claseIdParam)
         setSelectedClase(claseIdParam)
+        if (clase) setCalendarMonth(toLocalDay(clase.fecha))
+      } else if (data.length > 0) {
+        // Autoseleccionar la clase más próxima a hoy
+        const nearestId = getNearestClaseId(data)
+        const nearest = data.find((c: any) => c.id === nearestId)
+        setSelectedClase(nearestId)
+        if (nearest) setCalendarMonth(toLocalDay(nearest.fecha))
+      } else {
+        setSelectedClase('')
       }
     } catch (error) {
       console.error('Error loading clases:', error)
@@ -295,6 +346,7 @@ function AsistenciaPageContent() {
       const newClase = await createClase(selectedMateria, fecha, newClaseHorario)
       await loadClases(selectedMateria)
       setSelectedClase(newClase.id)
+      setCalendarMonth(toLocalDay(newClase.fecha))
       setNewClaseDialogOpen(false)
       setNewClaseHorario('')
     } catch (error) {
@@ -458,6 +510,39 @@ function AsistenciaPageContent() {
   const currentMateria = materias.find((m: any) => m.id === selectedMateria)
   const currentDocentes = getDocentesFromMateria(currentMateria)
 
+  // Agrupar clases por día (para el calendario)
+  const clasesByDayKey = useMemo(() => {
+    const map = new Map<string, any[]>()
+    for (const c of clases) {
+      const key = dayKey(toLocalDay(c.fecha))
+      if (!map.has(key)) map.set(key, [])
+      map.get(key)!.push(c)
+    }
+    return map
+  }, [clases])
+
+  // Días que tienen al menos una clase (para marcarlos en el calendario)
+  const claseDays = useMemo(
+    () => clases.map((c: any) => toLocalDay(c.fecha)),
+    [clases],
+  )
+
+  // Día actualmente seleccionado
+  const selectedDay = currentClase ? toLocalDay(currentClase.fecha) : undefined
+
+  // Clases del día seleccionado (puede haber más de un horario)
+  const selectedDayClases = selectedDay
+    ? clasesByDayKey.get(dayKey(selectedDay)) || []
+    : []
+
+  function handleSelectDay(day: Date | undefined) {
+    if (!day) return
+    const list = clasesByDayKey.get(dayKey(day))
+    if (list && list.length > 0) {
+      setSelectedClase(list[0].id)
+    }
+  }
+
   function handleDownloadReport() {
     if (!currentClase || !currentMateria || alumnos.length === 0) return
 
@@ -567,101 +652,137 @@ function AsistenciaPageContent() {
             </div>
           )}
 
-          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-            {/* Seleccionar Materia */}
-            <div>
-              <label className="block text-sm font-medium mb-2">Materia</label>
-              <Select value={selectedMateria} onValueChange={setSelectedMateria}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Seleccionar materia..." />
-                </SelectTrigger>
-                <SelectContent>
-                  {filteredMaterias.map((materia) => (
-                    <SelectItem key={materia.id} value={materia.id}>
-                      <div className="flex items-center gap-2">
-                        {materia.categorias && (
-                          <div className="w-2 h-2 rounded-full" style={{ backgroundColor: materia.categorias.color }} />
-                        )}
-                        {materia.nombre}
-                      </div>
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
+          {/* Seleccionar Materia */}
+          <div className="mb-6 max-w-md">
+            <label className="block text-sm font-medium mb-2">Materia</label>
+            <Select value={selectedMateria} onValueChange={setSelectedMateria}>
+              <SelectTrigger>
+                <SelectValue placeholder="Seleccionar materia..." />
+              </SelectTrigger>
+              <SelectContent>
+                {filteredMaterias.map((materia) => (
+                  <SelectItem key={materia.id} value={materia.id}>
+                    <div className="flex items-center gap-2">
+                      {materia.categorias && (
+                        <div className="w-2 h-2 rounded-full" style={{ backgroundColor: materia.categorias.color }} />
+                      )}
+                      {materia.nombre}
+                    </div>
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
 
-            {/* Seleccionar Clase */}
-            <div>
-              <label className="block text-sm font-medium mb-2">Clase</label>
-              <div className="flex gap-2">
-                <Select value={selectedClase} onValueChange={setSelectedClase}>
-                  <SelectTrigger className="flex-1">
-                    <SelectValue placeholder="Seleccionar clase..." />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {clases.map((clase) => (
-                      <SelectItem key={clase.id} value={clase.id}>
-                        {formatDateShort(clase.fecha)} {clase.horario ? `- ${clase.horario}` : ''}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                {selectedClase && (
-                  <Button
-                    variant="outline"
-                    size="icon"
-                    onClick={() => handleDeleteClase(selectedClase)}
-                    className="text-destructive hover:text-destructive hover:bg-destructive/10"
-                    title="Eliminar clase"
-                  >
-                    <Trash2 className="h-4 w-4" />
-                  </Button>
+          {/* Seleccionar Clase mediante calendario */}
+          {selectedMateria && (
+            <div className="grid gap-6 lg:grid-cols-[auto_1fr] lg:items-start">
+              {/* Calendario */}
+              <div>
+                <label className="block text-sm font-medium mb-2">Clase</label>
+                {clases.length > 0 ? (
+                  <Calendar
+                    mode="single"
+                    locale={es}
+                    selected={selectedDay}
+                    month={calendarMonth}
+                    onMonthChange={setCalendarMonth}
+                    onSelect={handleSelectDay}
+                    disabled={(date) => !clasesByDayKey.has(dayKey(date))}
+                    modifiers={{ hasClase: claseDays }}
+                    modifiersClassNames={{
+                      hasClase: 'font-semibold underline underline-offset-4 decoration-primary',
+                    }}
+                    className="rounded-lg border w-fit"
+                  />
+                ) : (
+                  <p className="text-sm text-muted-foreground rounded-lg border p-4 max-w-xs">
+                    Todavía no hay clases para esta materia. Creá la primera con "Nueva clase".
+                  </p>
                 )}
               </div>
-            </div>
 
-            {/* Botón crear clase */}
-            <div className="flex items-end">
-              <Dialog open={newClaseDialogOpen} onOpenChange={setNewClaseDialogOpen}>
-                <DialogTrigger asChild>
-                  <Button 
-                    disabled={!selectedMateria}
-                    className="w-full"
-                  >
-                    <Plus className="mr-2 h-4 w-4" />
-                    Nueva clase
-                  </Button>
-                </DialogTrigger>
-                <DialogContent>
-                  <DialogHeader>
-                    <DialogTitle>Nueva Clase</DialogTitle>
-                    <DialogDescription>
-                      Crear una nueva clase para {currentMateria?.nombre}
-                    </DialogDescription>
-                  </DialogHeader>
-                  <div className="space-y-4 py-4">
-                    <div>
-                      <label className="text-sm font-medium">Horario de la clase</label>
-                      <Input
-                        type="text"
-                        value={newClaseHorario}
-                        onChange={(e) => setNewClaseHorario(e.target.value)}
-                        placeholder="Ej: 18:00 - 22:00"
-                        className="mt-2"
-                      />
+              {/* Detalle de la clase seleccionada + acciones */}
+              <div className="space-y-4">
+                {/* Si hay varios horarios en el mismo día, permitir elegir */}
+                {selectedDayClases.length > 1 && (
+                  <div>
+                    <p className="text-sm font-medium mb-2">Horarios de este día</p>
+                    <div className="flex flex-wrap gap-2">
+                      {selectedDayClases.map((c: any) => (
+                        <Button
+                          key={c.id}
+                          variant={selectedClase === c.id ? 'default' : 'outline'}
+                          size="sm"
+                          onClick={() => setSelectedClase(c.id)}
+                        >
+                          {c.horario || 'Sin horario'}
+                        </Button>
+                      ))}
                     </div>
-                    <Button 
-                      onClick={handleCreateClase} 
-                      disabled={!newClaseHorario || creatingClase}
-                      className="w-full"
+                  </div>
+                )}
+
+                {currentClase && (
+                  <div className="rounded-lg border p-4 flex items-start justify-between gap-4">
+                    <div>
+                      <p className="text-xs uppercase tracking-wide text-muted-foreground">Clase seleccionada</p>
+                      <p className="text-lg font-semibold capitalize mt-1">{formatDateLong(currentClase.fecha)}</p>
+                      {currentClase.horario && (
+                        <p className="text-sm text-muted-foreground">{currentClase.horario}</p>
+                      )}
+                    </div>
+                    <Button
+                      variant="outline"
+                      size="icon"
+                      onClick={() => handleDeleteClase(selectedClase)}
+                      className="text-destructive hover:text-destructive hover:bg-destructive/10 shrink-0"
+                      title="Eliminar clase"
                     >
-                      {creatingClase ? 'Creando...' : 'Crear Clase'}
+                      <Trash2 className="h-4 w-4" />
                     </Button>
                   </div>
-                </DialogContent>
-              </Dialog>
+                )}
+
+                {/* Botón crear clase */}
+                <Dialog open={newClaseDialogOpen} onOpenChange={setNewClaseDialogOpen}>
+                  <DialogTrigger asChild>
+                    <Button disabled={!selectedMateria} variant="outline">
+                      <Plus className="mr-2 h-4 w-4" />
+                      Nueva clase
+                    </Button>
+                  </DialogTrigger>
+                  <DialogContent>
+                    <DialogHeader>
+                      <DialogTitle>Nueva Clase</DialogTitle>
+                      <DialogDescription>
+                        Crear una nueva clase para {currentMateria?.nombre}
+                      </DialogDescription>
+                    </DialogHeader>
+                    <div className="space-y-4 py-4">
+                      <div>
+                        <label className="text-sm font-medium">Horario de la clase</label>
+                        <Input
+                          type="text"
+                          value={newClaseHorario}
+                          onChange={(e) => setNewClaseHorario(e.target.value)}
+                          placeholder="Ej: 18:00 - 22:00"
+                          className="mt-2"
+                        />
+                      </div>
+                      <Button
+                        onClick={handleCreateClase}
+                        disabled={!newClaseHorario || creatingClase}
+                        className="w-full"
+                      >
+                        {creatingClase ? 'Creando...' : 'Crear Clase'}
+                      </Button>
+                    </div>
+                  </DialogContent>
+                </Dialog>
+              </div>
             </div>
-          </div>
+          )}
         </Card>
 
         {selectedClase && alumnos.length > 0 && (

@@ -815,7 +815,8 @@ export async function getAsistenciaDocentes(claseId: string) {
     .select('*')
     .eq('clase_id', claseId)
   if (error) throw error
-  return data[0]
+  // Devuelve todos los registros de docentes de la clase (los callers esperan un array)
+  return data || []
 }
 
 // Fetch, in batch, all clases (id, materia_id, fecha) for the given materias plus
