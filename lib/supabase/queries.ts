@@ -859,13 +859,29 @@ export async function getClasesConAsistenciaDocentes(materiaIds: string[]) {
   const supabase = createClient()
   if (!materiaIds || materiaIds.length === 0) return { clases: [], asistencias: [] }
 
-  const { data: clases, error: clasesError } = await supabase
-    .from('clases')
-    .select('id, materia_id, fecha')
-    .in('materia_id', materiaIds)
-  if (clasesError) throw clasesError
+  // Supabase/PostgREST limita a 1000 filas por página por defecto. Con
+  // muchas materias las clases pueden superar ese límite ampliamente, así
+  // que se pagina con .range() hasta traer todo. Sin esto, la consulta se
+  // truncaba silenciosamente y materias enteras quedaban sin ninguna clase
+  // en el informe (mostrando 0 clases dadas y 0% de asistencia).
+  const clases: any[] = []
+  const pageSize = 1000
+  let page = 0
+  while (true) {
+    const from = page * pageSize
+    const to = from + pageSize - 1
+    const { data, error: clasesError } = await supabase
+      .from('clases')
+      .select('id, materia_id, fecha')
+      .in('materia_id', materiaIds)
+      .range(from, to)
+    if (clasesError) throw clasesError
+    if (data) clases.push(...data)
+    if (!data || data.length < pageSize) break
+    page++
+  }
 
-  const claseIds = (clases || []).map((c: any) => c.id)
+  const claseIds = clases.map((c: any) => c.id)
   const asistencias: any[] = []
   // Chunk clase ids to keep the `in(...)` filter within safe URL limits.
   const chunkSize = 200
