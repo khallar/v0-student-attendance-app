@@ -21,7 +21,7 @@ import {
   getClasesConAsistenciaDocentes,
 } from '@/lib/supabase/queries'
 import { getMockUser, isAdmin } from '@/lib/auth-mock'
-import { AlertCircle, Users, BookOpen, Calendar, TrendingUp, CheckCircle, Download, Folder, Search, Filter, X, GraduationCap } from 'lucide-react'
+import { AlertCircle, Users, BookOpen, Calendar, TrendingUp, CheckCircle, Download, Folder, Search, Filter, X, GraduationCap, CalendarX, CalendarCheck, MessageSquare } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import * as XLSX from 'xlsx'
@@ -350,14 +350,17 @@ export default function InformesPage() {
     const groups =
       selectedDocente === 'todos' ? docentesList : docentesList.filter((d) => d.key === selectedDocente)
 
-    // clases (up to today) grouped by materia
+    // clases (up to today) grouped by materia, ordenadas por fecha asc
     const clasesByMateria = new Map<string, any[]>()
     docenteClases.forEach((c) => {
       if (new Date(c.fecha) > today) return
       if (!clasesByMateria.has(c.materia_id)) clasesByMateria.set(c.materia_id, [])
       clasesByMateria.get(c.materia_id)!.push(c)
     })
-    // presente lookup keyed by clase + rol
+    clasesByMateria.forEach((arr) =>
+      arr.sort((a, b) => new Date(a.fecha).getTime() - new Date(b.fecha).getTime())
+    )
+    // presente lookup keyed by clase + rol (solo registros explícitos)
     const asistenciaLookup = new Map<string, boolean>()
     docenteAsistencias.forEach((a) => {
       asistenciaLookup.set(`${a.clase_id}::${a.rol}`, a.presente)
@@ -370,7 +373,9 @@ export default function InformesPage() {
       label: string
       clasesDadas: number
       clasesRegistradas: number
+      inasistencias: number
       porcentaje: number
+      inasistenciasDetalle: { fecha: string; comentario: string }[]
     }[] = []
 
     groups.forEach((group) => {
@@ -384,6 +389,7 @@ export default function InformesPage() {
         const clases = clasesByMateria.get(entry.materiaId) || []
         const clasesDadas = clases.length
         let clasesRegistradas = 0
+        const inasistenciasDetalle: { fecha: string; comentario: string }[] = []
         clases.forEach((c) => {
           // Igual que en el resto de la app (registro de asistencia y export
           // a Excel): si no existe un registro explícito de asistencia_docentes
@@ -392,8 +398,18 @@ export default function InformesPage() {
           // el % de asistencia de docentes cuyas clases nunca fueron marcadas
           // manualmente.
           const presente = asistenciaLookup.get(`${c.id}::${entry.rol}`) ?? true
-          if (presente) clasesRegistradas++
+          if (presente) {
+            clasesRegistradas++
+          } else {
+            // Inasistencia explícita del docente: se adjunta el comentario de
+            // la clase (si lo hubiera) para dar contexto de la ausencia.
+            inasistenciasDetalle.push({
+              fecha: c.fecha,
+              comentario: (c.comentario || '').trim(),
+            })
+          }
         })
+        const inasistencias = inasistenciasDetalle.length
         const porcentaje = clasesDadas === 0 ? 0 : Math.round((clasesRegistradas / clasesDadas) * 100)
         rows.push({
           docente: group.nombre,
@@ -402,13 +418,33 @@ export default function InformesPage() {
           label: entry.label,
           clasesDadas,
           clasesRegistradas,
+          inasistencias,
           porcentaje,
+          inasistenciasDetalle,
         })
       })
     })
 
     return rows.sort((a, b) => a.docente.localeCompare(b.docente) || a.materia.localeCompare(b.materia))
   })()
+
+  // Totales agregados sobre las filas visibles (para las tarjetas resumen).
+  const docenteTotals = docenteRows.reduce(
+    (acc, r) => {
+      acc.clasesDadas += r.clasesDadas
+      acc.clasesRegistradas += r.clasesRegistradas
+      acc.inasistencias += r.inasistencias
+      return acc
+    },
+    { clasesDadas: 0, clasesRegistradas: 0, inasistencias: 0 }
+  )
+  const docentePorcentajeGlobal =
+    docenteTotals.clasesDadas === 0
+      ? 0
+      : Math.round((docenteTotals.clasesRegistradas / docenteTotals.clasesDadas) * 100)
+  // Filas que tienen al menos una inasistencia con detalle (para la sección
+  // de comentarios de inasistencias).
+  const filasConInasistencias = docenteRows.filter((r) => r.inasistenciasDetalle.length > 0)
 
   // Export Excel function
   async function exportToExcel() {
@@ -1090,61 +1126,181 @@ export default function InformesPage() {
                 <p>No hay docentes cargados en las materias</p>
               </div>
             ) : (
-              <Card>
-                <CardHeader>
-                  <CardTitle className="text-lg">Resumen de asistencia docente</CardTitle>
-                  <CardDescription>
-                    % asistencia = (clases con asistencia registrada / clases dadas hasta hoy) × 100
-                  </CardDescription>
-                </CardHeader>
-                <CardContent>
-                  <div className="overflow-x-auto">
-                    <Table>
-                      <TableHeader>
-                        <TableRow>
-                          <TableHead>Docente</TableHead>
-                          <TableHead>Materia</TableHead>
-                          <TableHead className="text-center">Clases dadas hasta hoy</TableHead>
-                          <TableHead className="text-center">Clases con asistencia registrada</TableHead>
-                          <TableHead className="text-right w-52">% de asistencia</TableHead>
-                        </TableRow>
-                      </TableHeader>
-                      <TableBody>
-                        {docenteRows.length === 0 ? (
+              <div className="space-y-6">
+                {/* Tarjetas resumen agregadas de la selección actual */}
+                <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+                  <Card>
+                    <CardContent className="pt-6">
+                      <div className="flex items-center gap-3">
+                        <div className="rounded-full bg-muted p-2">
+                          <Calendar className="h-5 w-5 text-muted-foreground" />
+                        </div>
+                        <div>
+                          <p className="text-2xl font-bold">{docenteTotals.clasesDadas}</p>
+                          <p className="text-xs text-muted-foreground">Clases dadas hasta hoy</p>
+                        </div>
+                      </div>
+                    </CardContent>
+                  </Card>
+                  <Card>
+                    <CardContent className="pt-6">
+                      <div className="flex items-center gap-3">
+                        <div className="rounded-full bg-green-100 p-2">
+                          <CalendarCheck className="h-5 w-5 text-green-600" />
+                        </div>
+                        <div>
+                          <p className="text-2xl font-bold text-green-600">{docenteTotals.clasesRegistradas}</p>
+                          <p className="text-xs text-muted-foreground">Clases con presencia</p>
+                        </div>
+                      </div>
+                    </CardContent>
+                  </Card>
+                  <Card>
+                    <CardContent className="pt-6">
+                      <div className="flex items-center gap-3">
+                        <div className="rounded-full bg-red-100 p-2">
+                          <CalendarX className="h-5 w-5 text-red-600" />
+                        </div>
+                        <div>
+                          <p className="text-2xl font-bold text-red-600">{docenteTotals.inasistencias}</p>
+                          <p className="text-xs text-muted-foreground">Inasistencias registradas</p>
+                        </div>
+                      </div>
+                    </CardContent>
+                  </Card>
+                  <Card>
+                    <CardContent className="pt-6">
+                      <div className="flex items-center gap-3">
+                        <div className="rounded-full bg-muted p-2">
+                          <TrendingUp className="h-5 w-5 text-muted-foreground" />
+                        </div>
+                        <div>
+                          <p className={`text-2xl font-bold ${getPorcentajeColor(docentePorcentajeGlobal)}`}>
+                            {docentePorcentajeGlobal}%
+                          </p>
+                          <p className="text-xs text-muted-foreground">Asistencia global</p>
+                        </div>
+                      </div>
+                    </CardContent>
+                  </Card>
+                </div>
+
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="text-lg">Resumen de asistencia docente</CardTitle>
+                    <CardDescription>
+                      % asistencia = (clases con presencia / clases dadas hasta hoy) × 100
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="overflow-x-auto">
+                      <Table>
+                        <TableHeader>
                           <TableRow>
-                            <TableCell colSpan={5} className="text-center text-muted-foreground py-6">
-                              Sin resultados para la selección actual
-                            </TableCell>
+                            <TableHead>Docente</TableHead>
+                            <TableHead>Materia</TableHead>
+                            <TableHead className="text-center">Clases dadas hasta hoy</TableHead>
+                            <TableHead className="text-center">Clases con presencia</TableHead>
+                            <TableHead className="text-center">Inasistencias</TableHead>
+                            <TableHead className="text-right w-52">% de asistencia</TableHead>
                           </TableRow>
-                        ) : (
-                          docenteRows.map((row, i) => (
-                            <TableRow key={`${row.docente}-${row.codigo}-${i}`}>
-                              <TableCell className="font-medium">
-                                {row.docente}
-                                <span className="block text-xs text-muted-foreground font-normal">{row.label}</span>
-                              </TableCell>
-                              <TableCell>
-                                {row.materia}
-                                <span className="block text-xs text-muted-foreground">{row.codigo}</span>
-                              </TableCell>
-                              <TableCell className="text-center font-semibold">{row.clasesDadas}</TableCell>
-                              <TableCell className="text-center font-semibold">{row.clasesRegistradas}</TableCell>
-                              <TableCell>
-                                <div className="flex items-center justify-end gap-2">
-                                  <Progress value={row.porcentaje} className="w-24 h-2" />
-                                  <span className={`font-semibold w-10 text-right ${getPorcentajeColor(row.porcentaje)}`}>
-                                    {row.porcentaje}%
-                                  </span>
-                                </div>
+                        </TableHeader>
+                        <TableBody>
+                          {docenteRows.length === 0 ? (
+                            <TableRow>
+                              <TableCell colSpan={6} className="text-center text-muted-foreground py-6">
+                                Sin resultados para la selección actual
                               </TableCell>
                             </TableRow>
-                          ))
-                        )}
-                      </TableBody>
-                    </Table>
-                  </div>
-                </CardContent>
-              </Card>
+                          ) : (
+                            docenteRows.map((row, i) => (
+                              <TableRow key={`${row.docente}-${row.codigo}-${i}`}>
+                                <TableCell className="font-medium">
+                                  {row.docente}
+                                  <span className="block text-xs text-muted-foreground font-normal">{row.label}</span>
+                                </TableCell>
+                                <TableCell>
+                                  {row.materia}
+                                  <span className="block text-xs text-muted-foreground">{row.codigo}</span>
+                                </TableCell>
+                                <TableCell className="text-center font-semibold">{row.clasesDadas}</TableCell>
+                                <TableCell className="text-center font-semibold text-green-600">{row.clasesRegistradas}</TableCell>
+                                <TableCell className="text-center">
+                                  {row.inasistencias > 0 ? (
+                                    <Badge variant="destructive">{row.inasistencias}</Badge>
+                                  ) : (
+                                    <span className="text-muted-foreground">0</span>
+                                  )}
+                                </TableCell>
+                                <TableCell>
+                                  <div className="flex items-center justify-end gap-2">
+                                    <Progress value={row.porcentaje} className="w-24 h-2" />
+                                    <span className={`font-semibold w-10 text-right ${getPorcentajeColor(row.porcentaje)}`}>
+                                      {row.porcentaje}%
+                                    </span>
+                                  </div>
+                                </TableCell>
+                              </TableRow>
+                            ))
+                          )}
+                        </TableBody>
+                      </Table>
+                    </div>
+                  </CardContent>
+                </Card>
+
+                {/* Detalle de inasistencias con los comentarios de las clases */}
+                {filasConInasistencias.length > 0 && (
+                  <Card>
+                    <CardHeader>
+                      <CardTitle className="text-lg flex items-center gap-2">
+                        <MessageSquare className="h-5 w-5 text-muted-foreground" />
+                        Comentarios de clases con inasistencia
+                      </CardTitle>
+                      <CardDescription>
+                        Fechas en las que el docente figura ausente, junto al comentario registrado en la clase.
+                      </CardDescription>
+                    </CardHeader>
+                    <CardContent className="space-y-6">
+                      {filasConInasistencias.map((row, i) => (
+                        <div key={`${row.docente}-${row.codigo}-detalle-${i}`}>
+                          <div className="flex flex-wrap items-baseline justify-between gap-1 mb-2">
+                            <p className="font-medium">
+                              {row.docente}
+                              <span className="text-xs text-muted-foreground font-normal"> — {row.label}</span>
+                            </p>
+                            <p className="text-sm text-muted-foreground">
+                              {row.materia} <span className="text-xs">({row.codigo})</span>
+                            </p>
+                          </div>
+                          <ul className="space-y-2">
+                            {row.inasistenciasDetalle.map((det, j) => (
+                              <li
+                                key={j}
+                                className="flex items-start gap-3 rounded-md border border-border bg-muted/40 p-3"
+                              >
+                                <div className="flex items-center gap-1.5 shrink-0 text-red-600">
+                                  <CalendarX className="h-4 w-4" />
+                                  <span className="text-sm font-medium tabular-nums">
+                                    {formatDateShort(det.fecha)}
+                                  </span>
+                                </div>
+                                <p className="text-sm text-foreground/80">
+                                  {det.comentario ? (
+                                    det.comentario
+                                  ) : (
+                                    <span className="italic text-muted-foreground">Sin comentario registrado</span>
+                                  )}
+                                </p>
+                              </li>
+                            ))}
+                          </ul>
+                        </div>
+                      ))}
+                    </CardContent>
+                  </Card>
+                )}
+              </div>
             )}
           </TabsContent>
         </Tabs>

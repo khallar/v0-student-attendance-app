@@ -872,7 +872,7 @@ export async function getClasesConAsistenciaDocentes(materiaIds: string[]) {
     const to = from + pageSize - 1
     const { data, error: clasesError } = await supabase
       .from('clases')
-      .select('id, materia_id, fecha')
+      .select('id, materia_id, fecha, comentario')
       .in('materia_id', materiaIds)
       .range(from, to)
     if (clasesError) throw clasesError
