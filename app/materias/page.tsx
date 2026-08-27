@@ -9,9 +9,10 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Checkbox } from '@/components/ui/checkbox'
+import { Alert, AlertTitle, AlertDescription } from '@/components/ui/alert'
 import { getMaterias, createMateria, updateMateria, updateMateriaDatosBasicos, deleteMateria, generateClasesForMateria, regenerateClasesForMateria, getCategorias, createCategoria, deleteCategoria } from '@/lib/supabase/queries'
 import { getMockUser, isAdmin } from '@/lib/auth-mock'
-import { Pencil, Trash2, Plus, Users, MapPin, FolderPlus, Folder, X, IdCard } from 'lucide-react'
+import { Pencil, Trash2, Plus, Users, MapPin, FolderPlus, Folder, X, IdCard, TriangleAlert } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import Link from 'next/link'
 
@@ -466,6 +467,35 @@ export default function MateriasPage() {
                 </DialogDescription>
               </DialogHeader>
               <div className="space-y-4 py-4">
+                {editingId && (
+                  <Alert variant="destructive">
+                    <TriangleAlert className="h-4 w-4" />
+                    <AlertTitle>Cuidado al modificar una materia ya creada</AlertTitle>
+                    <AlertDescription>
+                      <p>
+                        Cambiar la programación (repetición, fechas, días de dictado u horarios) puede
+                        eliminar y regenerar las clases de esta materia, lo que borra las clases ya
+                        generadas y sus registros de asistencia.
+                      </p>
+                      <p>
+                        Si solo necesitas corregir nombre, código, docentes, ubicación o categoría, usa{' '}
+                        <Button
+                          type="button"
+                          variant="link"
+                          className="h-auto p-0 text-destructive underline"
+                          onClick={() => {
+                            const materia = materias.find((m) => m.id === editingId)
+                            setDialogOpen(false)
+                            if (materia) handleEditBasic(materia)
+                          }}
+                        >
+                          Actualizar datos básicos
+                        </Button>{' '}
+                        en su lugar: no toca la programación ni afecta clases o asistencias existentes.
+                      </p>
+                    </AlertDescription>
+                  </Alert>
+                )}
                 {/* Datos básicos */}
                 <div className="space-y-3 border-b pb-4">
                   <h3 className="font-semibold text-sm">Datos Básicos</h3>
