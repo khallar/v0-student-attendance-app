@@ -385,7 +385,14 @@ export default function InformesPage() {
         const clasesDadas = clases.length
         let clasesRegistradas = 0
         clases.forEach((c) => {
-          if (asistenciaLookup.get(`${c.id}::${entry.rol}`) === true) clasesRegistradas++
+          // Igual que en el resto de la app (registro de asistencia y export
+          // a Excel): si no existe un registro explícito de asistencia_docentes
+          // para esta clase/rol, el docente se considera presente por defecto.
+          // Antes esto se contaba como "no registrada" (0), lo que subestimaba
+          // el % de asistencia de docentes cuyas clases nunca fueron marcadas
+          // manualmente.
+          const presente = asistenciaLookup.get(`${c.id}::${entry.rol}`) ?? true
+          if (presente) clasesRegistradas++
         })
         const porcentaje = clasesDadas === 0 ? 0 : Math.round((clasesRegistradas / clasesDadas) * 100)
         rows.push({
