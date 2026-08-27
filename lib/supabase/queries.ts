@@ -131,6 +131,39 @@ export async function updateMateria(
   return data[0]
 }
 
+// Actualiza únicamente los datos básicos de una materia (nombre, código,
+// docentes, ubicación y categoría) sin tocar la programación (repetición,
+// fechas, días de dictado, horarios). Al no modificar esos campos, esta
+// función NUNCA debe usarse para regenerar clases: las clases ya generadas
+// y sus registros de asistencia quedan intactos.
+export async function updateMateriaDatosBasicos(
+  id: string,
+  nombre: string,
+  codigo: string,
+  profesor: string,
+  ubicacion: string = '',
+  categoria_id: string = '',
+  docente_ayudante: string = '',
+  docente_ayudante_2: string = ''
+) {
+  const supabase = createClient()
+  const { data, error } = await supabase
+    .from('materias')
+    .update({
+      nombre,
+      codigo,
+      profesor,
+      ubicacion: ubicacion || null,
+      categoria_id: categoria_id || null,
+      docente_ayudante: docente_ayudante || null,
+      docente_ayudante_2: docente_ayudante_2 || null
+    })
+    .eq('id', id)
+    .select('*, categorias(id, nombre, color)')
+  if (error) throw error
+  return data[0]
+}
+
 export async function deleteMateria(id: string) {
   const supabase = createClient()
   const { error } = await supabase.from('materias').delete().eq('id', id)

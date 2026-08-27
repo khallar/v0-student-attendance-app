@@ -9,9 +9,9 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Checkbox } from '@/components/ui/checkbox'
-import { getMaterias, createMateria, updateMateria, deleteMateria, generateClasesForMateria, regenerateClasesForMateria, getCategorias, createCategoria, deleteCategoria } from '@/lib/supabase/queries'
+import { getMaterias, createMateria, updateMateria, updateMateriaDatosBasicos, deleteMateria, generateClasesForMateria, regenerateClasesForMateria, getCategorias, createCategoria, deleteCategoria } from '@/lib/supabase/queries'
 import { getMockUser, isAdmin } from '@/lib/auth-mock'
-import { Pencil, Trash2, Plus, Users, MapPin, FolderPlus, Folder, X } from 'lucide-react'
+import { Pencil, Trash2, Plus, Users, MapPin, FolderPlus, Folder, X, IdCard } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import Link from 'next/link'
 
@@ -59,6 +59,24 @@ export default function MateriasPage() {
     dias_dictado: [] as string[],
     ubicacion: '',
     horarios_por_dia: {} as Record<string, { desde: string; hasta: string }>,
+    categoria_id: '',
+  })
+
+  // Estado para el diálogo de "Actualizar datos básicos": edita únicamente
+  // nombre, código, docentes, ubicación y categoría, sin tocar la
+  // programación (repetición, fechas, días u horarios). Esto garantiza que
+  // las clases ya generadas y sus registros de asistencia no se vean
+  // afectados.
+  const [basicDialogOpen, setBasicDialogOpen] = useState(false)
+  const [savingBasic, setSavingBasic] = useState(false)
+  const [editingBasicId, setEditingBasicId] = useState<string | null>(null)
+  const [basicFormData, setBasicFormData] = useState({
+    nombre: '',
+    codigo: '',
+    profesor: '',
+    docente_ayudante: '',
+    docente_ayudante_2: '',
+    ubicacion: '',
     categoria_id: '',
   })
 
@@ -263,6 +281,75 @@ export default function MateriasPage() {
     })
     setEditingId(materia.id)
     setDialogOpen(true)
+  }
+
+  function handleEditBasic(materia: any) {
+    setBasicFormData({
+      nombre: materia.nombre,
+      codigo: materia.codigo,
+      profesor: materia.profesor,
+      docente_ayudante: materia.docente_ayudante || '',
+      docente_ayudante_2: materia.docente_ayudante_2 || '',
+      ubicacion: materia.ubicacion || '',
+      categoria_id: materia.categoria_id || '',
+    })
+    setEditingBasicId(materia.id)
+    setBasicDialogOpen(true)
+  }
+
+  function resetBasicForm() {
+    setBasicFormData({
+      nombre: '',
+      codigo: '',
+      profesor: '',
+      docente_ayudante: '',
+      docente_ayudante_2: '',
+      ubicacion: '',
+      categoria_id: '',
+    })
+    setEditingBasicId(null)
+  }
+
+  async function handleSaveBasic() {
+    if (!editingBasicId) return
+
+    // Los usuarios no-admin deben mantener la materia dentro de una de sus
+    // categorías asignadas.
+    if (!isUserAdmin) {
+      if (!basicFormData.categoria_id) {
+        alert('Debes seleccionar una categoría asignada para la materia.')
+        return
+      }
+      if (!assignedCategoriaIds.includes(basicFormData.categoria_id)) {
+        alert('Solo puedes asignar la materia a tus categorías asignadas.')
+        return
+      }
+    }
+
+    try {
+      setSavingBasic(true)
+      // Solo actualiza datos básicos: NO toca repetición, fechas, días u
+      // horarios, por lo que las clases ya generadas y sus asistencias no
+      // se modifican, eliminan ni recrean.
+      await updateMateriaDatosBasicos(
+        editingBasicId,
+        basicFormData.nombre,
+        basicFormData.codigo,
+        basicFormData.profesor,
+        basicFormData.ubicacion,
+        basicFormData.categoria_id,
+        basicFormData.docente_ayudante,
+        basicFormData.docente_ayudante_2
+      )
+      resetBasicForm()
+      setBasicDialogOpen(false)
+      await loadData()
+    } catch (error) {
+      console.error('Error saving basic data:', error)
+      alert('Error al actualizar los datos básicos de la materia')
+    } finally {
+      setSavingBasic(false)
+    }
   }
 
   async function handleDelete(id: string) {
@@ -701,6 +788,15 @@ export default function MateriasPage() {
                         <Button
                           variant="ghost"
                           size="sm"
+                          title="Actualizar datos básicos"
+                          onClick={() => handleEditBasic(materia)}
+                        >
+                          <IdCard className="h-4 w-4" />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          title="Editar materia completa"
                           onClick={() => handleEdit(materia)}
                         >
                           <Pencil className="h-4 w-4" />
@@ -709,6 +805,7 @@ export default function MateriasPage() {
                           variant="ghost"
                           size="sm"
                           className="text-red-600 hover:text-red-700"
+                          title="Eliminar materia"
                           onClick={() => handleDelete(materia.id)}
                         >
                           <Trash2 className="h-4 w-4" />
@@ -721,6 +818,113 @@ export default function MateriasPage() {
             </Table>
           </Card>
         )}
+
+        {/* Diálogo para actualizar solo los datos básicos de una materia,
+            sin afectar la programación, las clases ya generadas ni sus
+            registros de asistencia. */}
+        <Dialog
+          open={basicDialogOpen}
+          onOpenChange={(open) => {
+            setBasicDialogOpen(open)
+            if (!open) resetBasicForm()
+          }}
+        >
+          <DialogContent className="max-h-[90vh] overflow-y-auto max-w-lg">
+            <DialogHeader>
+              <DialogTitle>Actualizar datos básicos</DialogTitle>
+              <DialogDescription>
+                Modifica los datos básicos de la materia. La programación (horarios, días y clases
+                ya generadas) y sus registros de asistencia no se verán afectados.
+              </DialogDescription>
+            </DialogHeader>
+            <div className="space-y-4 py-4">
+              <div>
+                <label className="text-sm font-medium">Nombre</label>
+                <Input
+                  value={basicFormData.nombre}
+                  onChange={(e) => setBasicFormData({ ...basicFormData, nombre: e.target.value })}
+                  placeholder="Ej: Programación I"
+                />
+              </div>
+              <div>
+                <label className="text-sm font-medium">Código</label>
+                <Input
+                  value={basicFormData.codigo}
+                  onChange={(e) => setBasicFormData({ ...basicFormData, codigo: e.target.value })}
+                  placeholder="Ej: PROG-001"
+                />
+              </div>
+              <div>
+                <label className="text-sm font-medium">Profesor responsable</label>
+                <Input
+                  value={basicFormData.profesor}
+                  onChange={(e) => setBasicFormData({ ...basicFormData, profesor: e.target.value })}
+                  placeholder="Ej: Juan Pérez"
+                />
+              </div>
+              <div>
+                <label className="text-sm font-medium">Docente ayudante</label>
+                <Input
+                  value={basicFormData.docente_ayudante}
+                  onChange={(e) => setBasicFormData({ ...basicFormData, docente_ayudante: e.target.value })}
+                  placeholder="Ej: María Gómez (opcional)"
+                />
+              </div>
+              <div>
+                <label className="text-sm font-medium">Docente ayudante 2</label>
+                <Input
+                  value={basicFormData.docente_ayudante_2}
+                  onChange={(e) => setBasicFormData({ ...basicFormData, docente_ayudante_2: e.target.value })}
+                  placeholder="Ej: Carlos López (opcional)"
+                />
+              </div>
+              <div>
+                <label className="text-sm font-medium">Ubicacion</label>
+                <Input
+                  value={basicFormData.ubicacion}
+                  onChange={(e) => setBasicFormData({ ...basicFormData, ubicacion: e.target.value })}
+                  placeholder="Ej: Aula 101, Edificio A"
+                />
+              </div>
+              <div>
+                <label className="text-sm font-medium">
+                  Categoría{!isUserAdmin && <span className="text-destructive"> *</span>}
+                </label>
+                <Select
+                  value={basicFormData.categoria_id || 'none'}
+                  onValueChange={(value) => setBasicFormData({ ...basicFormData, categoria_id: value === 'none' ? '' : value })}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder={isUserAdmin ? 'Sin categoría' : 'Selecciona una categoría'} />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {isUserAdmin && <SelectItem value="none">Sin categoría</SelectItem>}
+                    {categorias.map((cat) => (
+                      <SelectItem key={cat.id} value={cat.id}>
+                        <div className="flex items-center gap-2">
+                          <div className="w-3 h-3 rounded-full" style={{ backgroundColor: cat.color }} />
+                          {cat.nombre}
+                        </div>
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="flex gap-2 justify-end pt-4">
+                <Button variant="outline" onClick={() => setBasicDialogOpen(false)} disabled={savingBasic}>
+                  Cancelar
+                </Button>
+                <Button
+                  onClick={handleSaveBasic}
+                  disabled={!basicFormData.nombre || !basicFormData.codigo || savingBasic}
+                >
+                  {savingBasic ? 'Guardando...' : 'Guardar'}
+                </Button>
+              </div>
+            </div>
+          </DialogContent>
+        </Dialog>
       </div>
     </AuthGuard>
   )
