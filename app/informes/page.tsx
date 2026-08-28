@@ -103,9 +103,27 @@ export default function InformesPage() {
   const [docenteDataLoaded, setDocenteDataLoaded] = useState(false)
   const [loadingDocentes, setLoadingDocentes] = useState(false)
 
+  // Pestaña activa (Tabs controlado). Se usa junto a un useEffect para
+  // disparar la carga de cada pestaña de forma robusta, evitando la condición
+  // de carrera que se daba al depender solo del onValueChange (que podía
+  // ejecutarse antes de que `materias` terminara de cargar y no reintentaba).
+  const [activeTab, setActiveTab] = useState<string>('por-materia')
+
   useEffect(() => {
     loadInit()
   }, [])
+
+  // Cargar los datos de la pestaña activa cuando corresponda. A diferencia del
+  // onValueChange, este effect vuelve a evaluarse cuando `materias` termina de
+  // cargar, así el informe Por Docente siempre obtiene sus clases/asistencias.
+  useEffect(() => {
+    if (activeTab === 'por-alumno') {
+      loadAlumnosList()
+    } else if (activeTab === 'por-docente' && materias.length > 0) {
+      loadDocentesData()
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeTab, materias])
 
   async function loadInit() {
     try {
@@ -540,10 +558,7 @@ export default function InformesPage() {
           <p className="text-muted-foreground">Reportes y estadísticas detalladas de todas las clases</p>
         </div>
 
-        <Tabs defaultValue="por-materia" onValueChange={(v) => {
-          if (v === 'por-alumno') loadAlumnosList()
-          if (v === 'por-docente') loadDocentesData()
-        }}>
+        <Tabs value={activeTab} onValueChange={setActiveTab}>
           <TabsList className="mb-6">
             <TabsTrigger value="por-materia" className="gap-2">
               <BookOpen className="h-4 w-4" />
