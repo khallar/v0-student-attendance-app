@@ -30,7 +30,7 @@ import {
 import { getMockUser, isAdmin } from '@/lib/auth-mock'
 import { Textarea } from '@/components/ui/textarea'
 import { Checkbox } from '@/components/ui/checkbox'
-import { formatDateShort } from '@/lib/utils-attendance'
+import { formatDateShort, toAppDay, appDayKey, todayStableFecha } from '@/lib/utils-attendance'
 import { ArrowLeft, Download, Plus, Save, Trash2, QrCode, Copy, Check, Link2, Clock, Play, ImageDown, Folder, Users } from 'lucide-react'
 import Link from 'next/link'
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog'
@@ -40,31 +40,32 @@ import QRCode from 'react-qr-code'
 import { createClient } from '@/lib/supabase/client'
 import * as XLSX from 'xlsx'
 
-// Devuelve la fecha local (a medianoche) de una clase, para que coincida con lo que se muestra
+// Devuelve el día calendario (a medianoche local) de una clase, calculado en
+// horario de Argentina, para que coincida con lo que muestra el calendario.
 function toLocalDay(fecha: string | Date): Date {
-  const d = new Date(fecha)
-  return new Date(d.getFullYear(), d.getMonth(), d.getDate())
+  return toAppDay(fecha)
 }
 
-// Clave estable por día (yyyy-mm-dd en horario local)
-function dayKey(date: Date): string {
-  return `${date.getFullYear()}-${date.getMonth()}-${date.getDate()}`
+// Clave estable por día calendario argentino
+function dayKey(date: string | Date): string {
+  return appDayKey(date)
 }
 
-// Formato largo y legible de una fecha
+// Formato largo y legible de una fecha (día calendario argentino)
 function formatDateLong(fecha: string | Date): string {
   return new Date(fecha).toLocaleDateString('es-AR', {
     weekday: 'long',
     day: '2-digit',
     month: 'long',
     year: 'numeric',
+    timeZone: 'America/Argentina/Buenos_Aires',
   })
 }
 
 // Devuelve el id de la clase más próxima a hoy (menor diferencia absoluta)
 function getNearestClaseId(list: any[]): string {
   if (!list.length) return ''
-  const now = Date.now()
+  const now = new Date(todayStableFecha()).getTime()
   let best = list[0]
   let bestDiff = Math.abs(new Date(best.fecha).getTime() - now)
   for (const c of list) {

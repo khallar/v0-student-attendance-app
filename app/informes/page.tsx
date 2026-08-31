@@ -26,6 +26,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import * as XLSX from 'xlsx'
 import { PieChart, Pie, Cell, Legend, Tooltip, ResponsiveContainer } from 'recharts'
+import { todayStableFecha } from '@/lib/utils-attendance'
 
 // Normalize a name for grouping (accent- and case-insensitive)
 function normalizeName(s: string) {
@@ -42,6 +43,7 @@ function formatDateShort(fecha: string) {
     day: '2-digit',
     month: '2-digit',
     year: '2-digit',
+    timeZone: 'America/Argentina/Buenos_Aires',
   })
 }
 
@@ -252,9 +254,10 @@ export default function InformesPage() {
   }
 
   // --- Helpers for Por Materia ---
-  // Filter clases up to today for statistics calculation
-  const today = new Date()
-  today.setHours(23, 59, 59, 999) // End of today
+  // Filter clases up to today for statistics calculation.
+  // "today" = fin del día calendario argentino (las clases se guardan al
+  // mediodía UTC, así la clase de hoy siempre entra sin depender de la TZ).
+  const today = new Date(new Date(todayStableFecha()).getTime() + 18 * 60 * 60 * 1000)
   const clasesPasadas = clases.filter((c: any) => new Date(c.fecha) <= today)
 
   function getAsistenciaStats(alumnoId: string) {
