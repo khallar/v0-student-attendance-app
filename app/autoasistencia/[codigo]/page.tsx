@@ -147,7 +147,7 @@ export default function AutoAsistenciaPage() {
             </Alert>
             <div className="pt-4 text-sm text-muted-foreground">
               <p>Materia: <span className="font-medium text-foreground">{clase?.materias?.nombre}</span></p>
-              <p>Clase: {new Date(clase?.fecha).toLocaleDateString('es-AR')}</p>
+              <p>Clase: {new Date(clase?.fecha).toLocaleDateString('es-AR', { timeZone: 'America/Argentina/Buenos_Aires' })}</p>
             </div>
           </CardContent>
         </Card>
@@ -167,7 +167,8 @@ export default function AutoAsistenciaPage() {
                 {new Date(clase?.fecha).toLocaleDateString('es-AR', { 
                   weekday: 'long', 
                   day: 'numeric', 
-                  month: 'long' 
+                  month: 'long',
+                  timeZone: 'America/Argentina/Buenos_Aires',
                 })}
               </p>
               {clase?.horario && (

@@ -30,7 +30,7 @@ import {
 import { getMockUser, isAdmin } from '@/lib/auth-mock'
 import { Textarea } from '@/components/ui/textarea'
 import { Checkbox } from '@/components/ui/checkbox'
-import { formatDateShort } from '@/lib/utils-attendance'
+import { formatDateShort, toAppDay, appDayKey, todayStableFecha } from '@/lib/utils-attendance'
 import { ArrowLeft, Download, Plus, Save, Trash2, QrCode, Copy, Check, Link2, Clock, Play, ImageDown, Folder, Users } from 'lucide-react'
 import Link from 'next/link'
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog'
@@ -40,31 +40,32 @@ import QRCode from 'react-qr-code'
 import { createClient } from '@/lib/supabase/client'
 import * as XLSX from 'xlsx'
 
-// Devuelve la fecha local (a medianoche) de una clase, para que coincida con lo que se muestra
+// Devuelve el día calendario (a medianoche local) de una clase, calculado en
+// horario de Argentina, para que coincida con lo que muestra el calendario.
 function toLocalDay(fecha: string | Date): Date {
-  const d = new Date(fecha)
-  return new Date(d.getFullYear(), d.getMonth(), d.getDate())
+  return toAppDay(fecha)
 }
 
-// Clave estable por día (yyyy-mm-dd en horario local)
-function dayKey(date: Date): string {
-  return `${date.getFullYear()}-${date.getMonth()}-${date.getDate()}`
+// Clave estable por día calendario argentino
+function dayKey(date: string | Date): string {
+  return appDayKey(date)
 }
 
-// Formato largo y legible de una fecha
+// Formato largo y legible de una fecha (día calendario argentino)
 function formatDateLong(fecha: string | Date): string {
   return new Date(fecha).toLocaleDateString('es-AR', {
     weekday: 'long',
     day: '2-digit',
     month: 'long',
     year: 'numeric',
+    timeZone: 'America/Argentina/Buenos_Aires',
   })
 }
 
 // Devuelve el id de la clase más próxima a hoy (menor diferencia absoluta)
 function getNearestClaseId(list: any[]): string {
   if (!list.length) return ''
-  const now = Date.now()
+  const now = new Date(todayStableFecha()).getTime()
   let best = list[0]
   let bestDiff = Math.abs(new Date(best.fecha).getTime() - now)
   for (const c of list) {
@@ -119,6 +120,10 @@ function AsistenciaPageContent() {
   // Load clases when materia changes
   useEffect(() => {
     if (selectedMateria) {
+      // Reset sincrónico de asistencias al cambiar de materia. Es el ÚNICO
+      // lugar que limpia el mapa, para evitar carreras con loadAsistencias
+      // (que es quien carga los valores reales de la clase seleccionada).
+      setAsistencias({})
       loadClases(selectedMateria)
       loadAlumnos(selectedMateria)
     }
@@ -269,12 +274,9 @@ function AsistenciaPageContent() {
     try {
       const data = await getAlumnosByMateria(materiaId)
       setAlumnos(data)
-      // Initialize asistencias to ausente
-      const newAsistencias: Record<string, string> = {}
-      data.forEach((alumno: any) => {
-        newAsistencias[alumno.id] = 'ausente'
-      })
-      setAsistencias(newAsistencias)
+      // NO reseteamos asistencias acá: loadAsistencias es la única fuente de
+      // verdad para la clase seleccionada. Los alumnos sin registro se muestran
+      // como "ausente" por defecto en la grilla.
     } catch (error) {
       console.error('Error loading alumnos:', error)
     }
@@ -287,10 +289,13 @@ function AsistenciaPageContent() {
         getClaseById(claseId),
         getAsistenciaDocentes(claseId)
       ])
+      // Construimos el mapa directamente desde los registros de asistencia de
+      // la clase, sin depender del estado `alumnos` (que puede no haber
+      // terminado de cargar). Los alumnos sin registro quedan como "ausente"
+      // por defecto en la grilla.
       const newAsistencias: Record<string, string> = {}
-      alumnos.forEach((alumno: any) => {
-        const asistencia = data.find((a: any) => a.alumno_id === alumno.id)
-        newAsistencias[alumno.id] = asistencia?.estado || 'ausente'
+      data.forEach((a: any) => {
+        newAsistencias[a.alumno_id] = a.estado
       })
       setAsistencias(newAsistencias)
       setComentario(claseData?.comentario || '')
@@ -478,9 +483,12 @@ function AsistenciaPageContent() {
     if (!selectedClase || !selectedMateria) return
     try {
       setSaving(true)
-      // Save all asistencias
-      for (const [alumnoId, estado] of Object.entries(asistencias)) {
-        await upsertAsistencia(selectedClase, alumnoId, estado)
+      // Guardamos un registro por cada alumno de la materia. Los que no tienen
+      // estado en el mapa se guardan como "ausente" (el mapa solo contiene
+      // los que fueron marcados o ya tenían registro previo).
+      for (const alumno of alumnos) {
+        const estado = asistencias[alumno.id] || 'ausente'
+        await upsertAsistencia(selectedClase, alumno.id, estado)
       }
       // Save comentario
       await updateClaseComentario(selectedClase, comentario)

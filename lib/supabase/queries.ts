@@ -1,4 +1,5 @@
 import { createClient } from './client'
+import { normalizeFecha, todayStableFecha } from '../utils-attendance'
 
 // Categorias
 export async function getCategorias() {
@@ -292,9 +293,12 @@ export async function getClaseById(claseId: string) {
 export async function createClase(materiaId: string, fecha: string, horario: string, ubicacion: string = '') {
   const supabase = createClient()
   const codigo = Math.random().toString(36).substring(2, 8).toUpperCase()
+  // Normalizamos al mediodía UTC del día calendario argentino para que la
+  // fecha se muestre siempre en el día correcto, sin importar la zona horaria.
+  const fechaEstable = normalizeFecha(fecha)
   const { data, error } = await supabase
     .from('clases')
-    .insert([{ materia_id: materiaId, fecha, horario, ubicacion: ubicacion || null, codigo_autoasistencia: codigo }])
+    .insert([{ materia_id: materiaId, fecha: fechaEstable, horario, ubicacion: ubicacion || null, codigo_autoasistencia: codigo }])
     .select()
   if (error) throw error
   return data[0]
@@ -369,10 +373,35 @@ export async function generateClasesForMateria(
     return hora_desde && hora_hasta ? `${hora_desde} - ${hora_hasta}` : ''
   }
   
-  const startDate = new Date(fecha_inicio)
-  const endDate = new Date(fecha_fin)
-  let currentDate = new Date(startDate)
-  
+  // Trabajamos SIEMPRE con el día calendario en UTC para que el resultado no
+  // dependa de la zona horaria donde se ejecute este código. fecha_inicio /
+  // fecha_fin llegan como 'yyyy-mm-dd' (input type="date"); los anclamos al
+  // mediodía UTC para iterar de forma estable, y cada clase también se guarda
+  // al mediodía UTC de su día (ver toStableFecha). Con eso, getUTCDay() da el
+  // día de la semana real elegido por el usuario y coincide con dias_dictado.
+  const [siY, siM, siD] = String(fecha_inicio).slice(0, 10).split('-').map(Number)
+  const [sfY, sfM, sfD] = String(fecha_fin).slice(0, 10).split('-').map(Number)
+  const startMs = Date.UTC(siY, siM - 1, siD, 12, 0, 0)
+  const endMs = Date.UTC(sfY, sfM - 1, sfD, 12, 0, 0)
+  const startDate = new Date(startMs)
+  let currentDate = new Date(startMs)
+  const endDate = new Date(endMs)
+
+  const pushClase = (date: Date) => {
+    const dayOfWeek = date.getUTCDay()
+    if (targetDays.length === 0 || targetDays.includes(dayOfWeek)) {
+      const codigo = Math.random().toString(36).substring(2, 8).toUpperCase()
+      clases.push({
+        materia_id: materiaId,
+        // Mediodía UTC del día calendario => estable en cualquier zona horaria
+        fecha: new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate(), 12, 0, 0)).toISOString(),
+        horario: getHorarioForDay(dayOfWeek),
+        ubicacion: ubicacion || null,
+        codigo_autoasistencia: codigo,
+      })
+    }
+  }
+
   // Get interval in days based on repetition
   const getIntervalDays = (rep: string): number => {
     switch (rep) {
@@ -393,43 +422,21 @@ export async function generateClasesForMateria(
   if (repeticion === 'cada_semana' || repeticion === 'cada_2_semanas') {
     // Find all matching days in each week/bi-week period
     while (currentDate <= endDate) {
-      const dayOfWeek = currentDate.getDay()
-      
-      if (targetDays.length === 0 || targetDays.includes(dayOfWeek)) {
-        const codigo = Math.random().toString(36).substring(2, 8).toUpperCase()
-        clases.push({
-          materia_id: materiaId,
-          fecha: currentDate.toISOString(),
-          horario: getHorarioForDay(dayOfWeek),
-          ubicacion: ubicacion || null,
-          codigo_autoasistencia: codigo,
-        })
-      }
-      
-      currentDate.setDate(currentDate.getDate() + 1)
-      
+      pushClase(currentDate)
+
+      currentDate.setUTCDate(currentDate.getUTCDate() + 1)
+
       // Skip extra days for bi-weekly
-      if (repeticion === 'cada_2_semanas' && currentDate.getDay() === startDate.getDay()) {
-        currentDate.setDate(currentDate.getDate() + 7) // Skip one week
+      if (repeticion === 'cada_2_semanas' && currentDate.getUTCDay() === startDate.getUTCDay()) {
+        currentDate.setUTCDate(currentDate.getUTCDate() + 7) // Skip one week
       }
     }
   } else {
     // For daily, monthly, yearly - use simple interval
     while (currentDate <= endDate) {
-      const dayOfWeek = currentDate.getDay()
-      
-      if (targetDays.length === 0 || targetDays.includes(dayOfWeek)) {
-        const codigo = Math.random().toString(36).substring(2, 8).toUpperCase()
-        clases.push({
-          materia_id: materiaId,
-          fecha: currentDate.toISOString(),
-          horario: getHorarioForDay(dayOfWeek),
-          ubicacion: ubicacion || null,
-          codigo_autoasistencia: codigo,
-        })
-      }
-      
-      currentDate.setDate(currentDate.getDate() + intervalDays)
+      pushClase(currentDate)
+
+      currentDate.setUTCDate(currentDate.getUTCDate() + intervalDays)
     }
   }
   
@@ -589,10 +596,11 @@ export async function getAsistenciasByAlumno(alumnoId: string) {
 // Get full attendance report for a single alumno across all their materias, up to today
 export async function getInformeByAlumno(alumnoId: string) {
   const supabase = createClient()
-  // Use end of today to include all clases from today
-  const today = new Date()
-  today.setHours(23, 59, 59, 999)
-  const todayStr = today.toISOString()
+  // Cota superior = fin del día calendario argentino de hoy.
+  // Las clases se guardan al mediodía UTC (12:00Z) de su día; tomamos el
+  // mediodía UTC de "hoy" en Argentina y le sumamos margen hasta el final del
+  // día, así se incluye siempre la clase de hoy sin depender de la TZ del server.
+  const todayStr = new Date(new Date(todayStableFecha()).getTime() + 18 * 60 * 60 * 1000).toISOString()
 
   // Get materias the alumno is enrolled in
   const { data: enrollments, error: enrollError } = await supabase
