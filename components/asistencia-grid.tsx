@@ -53,10 +53,13 @@ export function AsistenciaGrid({
     return sortOrder === 'asc' ? comp : -comp
   })
 
-  const presentCount = Object.values(asistencias).filter(e => e === 'presente').length
-  const auscentCount = Object.values(asistencias).filter(e => e === 'ausente').length
-  const justifiedCount = Object.values(asistencias).filter(e => e === 'justificado').length
-  const lateCount = Object.values(asistencias).filter(e => e === 'tarde').length
+  // Contamos por alumno (no por el mapa) para que "ausente" incluya también a
+  // quienes no tienen registro, que se muestran como ausentes por defecto.
+  const estados = alumnos.map((a) => asistencias[a.id] || 'ausente')
+  const presentCount = estados.filter(e => e === 'presente').length
+  const auscentCount = estados.filter(e => e === 'ausente').length
+  const justifiedCount = estados.filter(e => e === 'justificado').length
+  const lateCount = estados.filter(e => e === 'tarde').length
 
   return (
     <div className="space-y-4">

@@ -120,6 +120,10 @@ function AsistenciaPageContent() {
   // Load clases when materia changes
   useEffect(() => {
     if (selectedMateria) {
+      // Reset sincrónico de asistencias al cambiar de materia. Es el ÚNICO
+      // lugar que limpia el mapa, para evitar carreras con loadAsistencias
+      // (que es quien carga los valores reales de la clase seleccionada).
+      setAsistencias({})
       loadClases(selectedMateria)
       loadAlumnos(selectedMateria)
     }
@@ -270,12 +274,9 @@ function AsistenciaPageContent() {
     try {
       const data = await getAlumnosByMateria(materiaId)
       setAlumnos(data)
-      // Initialize asistencias to ausente
-      const newAsistencias: Record<string, string> = {}
-      data.forEach((alumno: any) => {
-        newAsistencias[alumno.id] = 'ausente'
-      })
-      setAsistencias(newAsistencias)
+      // NO reseteamos asistencias acá: loadAsistencias es la única fuente de
+      // verdad para la clase seleccionada. Los alumnos sin registro se muestran
+      // como "ausente" por defecto en la grilla.
     } catch (error) {
       console.error('Error loading alumnos:', error)
     }
@@ -288,10 +289,13 @@ function AsistenciaPageContent() {
         getClaseById(claseId),
         getAsistenciaDocentes(claseId)
       ])
+      // Construimos el mapa directamente desde los registros de asistencia de
+      // la clase, sin depender del estado `alumnos` (que puede no haber
+      // terminado de cargar). Los alumnos sin registro quedan como "ausente"
+      // por defecto en la grilla.
       const newAsistencias: Record<string, string> = {}
-      alumnos.forEach((alumno: any) => {
-        const asistencia = data.find((a: any) => a.alumno_id === alumno.id)
-        newAsistencias[alumno.id] = asistencia?.estado || 'ausente'
+      data.forEach((a: any) => {
+        newAsistencias[a.alumno_id] = a.estado
       })
       setAsistencias(newAsistencias)
       setComentario(claseData?.comentario || '')
@@ -479,9 +483,12 @@ function AsistenciaPageContent() {
     if (!selectedClase || !selectedMateria) return
     try {
       setSaving(true)
-      // Save all asistencias
-      for (const [alumnoId, estado] of Object.entries(asistencias)) {
-        await upsertAsistencia(selectedClase, alumnoId, estado)
+      // Guardamos un registro por cada alumno de la materia. Los que no tienen
+      // estado en el mapa se guardan como "ausente" (el mapa solo contiene
+      // los que fueron marcados o ya tenían registro previo).
+      for (const alumno of alumnos) {
+        const estado = asistencias[alumno.id] || 'ausente'
+        await upsertAsistencia(selectedClase, alumno.id, estado)
       }
       // Save comentario
       await updateClaseComentario(selectedClase, comentario)
